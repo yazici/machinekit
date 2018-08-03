@@ -1,5 +1,5 @@
 /**
- * @file    h3.h
+ * @file    api.h
  * @brief   Allwinner H3 SoC ARISC CNC firmware API
  *
  * @note    Firmware:   https://github.com/orangecnc/h3_arisc_firmware
@@ -8,13 +8,14 @@
  * @author  Mikhail Vydrenko (mikhail@vydrenko.ru)
  */
 
-#ifndef _H3_H
-#define _H3_H
+#ifndef _API_H
+#define _API_H
 
 #include <stdint.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <cpu.h>
 
 
 
@@ -22,19 +23,13 @@
 // public data
 
 #define PHY_MEM_BLOCK_SIZE      4096
-
-#define SRAM_A2_SIZE            (48*1024)
-#define SRAM_A2_ADDR            0x00040000 ///< for ARM use 0x00040000
 #define ARISC_CONF_SIZE         2048
-#define ARISC_CONF_ADDR         (SRAM_A2_ADDR + SRAM_A2_SIZE - ARISC_CONF_SIZE)
+
+
+
 
 #define MSG_BLOCK_SIZE          4096
-#define MSG_BLOCK_ADDR          (ARISC_CONF_ADDR - MSG_BLOCK_SIZE)
-
 #define MSG_CPU_BLOCK_SIZE      2048
-#define MSG_ARISC_BLOCK_ADDR    (MSG_BLOCK_ADDR + 0)
-#define MSG_ARM_BLOCK_ADDR      (MSG_BLOCK_ADDR + MSG_CPU_BLOCK_SIZE)
-
 #define MSG_MAX_CNT             32
 #define MSG_MAX_LEN             (MSG_CPU_BLOCK_SIZE / MSG_MAX_CNT)
 #define MSG_LEN                 (MSG_MAX_LEN - 4)
@@ -53,8 +48,7 @@ struct msg_t
 
 
 
-#define GPIO_PORTS_CNT          8   ///< number of GPIO ports
-#define GPIO_PINS_CNT           32  ///< number of GPIO port pins
+#define GPIO_PINS_CNT 32 ///< number of GPIO port pins
 
 /// the GPIO port names
 enum { PA, PB, PC, PD, PE, PF, PG, PL };
@@ -98,9 +92,6 @@ enum
     PULSGEN_MSG_TASK_TOGGLES
 };
 
-/// the message data sizes
-#define PULSGEN_MSG_BUF_LEN MSG_LEN
-
 /// the message data access
 struct pulsgen_msg_pin_setup_t { uint32_t ch; uint32_t port; uint32_t pin; uint32_t inverted; };
 struct pulsgen_msg_task_setup_t { uint32_t ch; uint32_t toggles;
@@ -112,7 +103,7 @@ struct pulsgen_msg_toggles_t { uint32_t toggles; };
 
 
 
-#define ENCODER_CH_CNT 8  ///< maximum number of encoder counter channels
+#define ENCODER_CH_CNT 8 ///< maximum number of encoder counter channels
 
 enum { PHASE_A, PHASE_B, PHASE_Z };
 enum { PH_A, PH_B, PH_Z };
@@ -140,12 +131,6 @@ struct encoder_msg_counts_get_t { int32_t counts; };
 
 
 
-
-
-
-
-
-
 // private vars
 
 static struct msg_t * msg_arisc[MSG_MAX_CNT] = {0};
@@ -164,6 +149,54 @@ static uint32_t *vrt_block_addr = 0;
 
 
 // public methods
+
+int32_t mem_init(uint8_t cpu_id)
+{
+    int32_t     mem_fd;
+    uint32_t    vrt_offset = 0;
+    off_t       phy_block_addr = 0;
+    int32_t     m = 0;
+    uint32_t    msg_block_addr =
+                    (cpu[cpu_id].ARISC_addr + cpu[cpu_id].ARISC_size - ARISC_CONF_SIZE) -
+                    MSG_BLOCK_SIZE ;
+
+    // open physical memory file
+    if ( (mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0 ) return -1;
+
+    // calculate phy memory block start
+    vrt_offset = msg_block_addr % PHY_MEM_BLOCK_SIZE;
+    phy_block_addr = msg_block_addr - vrt_offset;
+
+    // make a block of phy memory visible in our user space
+    vrt_block_addr = mmap(NULL, 2*MSG_BLOCK_SIZE, PROT_READ | PROT_WRITE,
+        MAP_SHARED, mem_fd, phy_block_addr);
+
+    // exit program if mmap is failed
+    if (vrt_block_addr == MAP_FAILED) return -2;
+
+    // no need to keep phy memory file open after mmap
+    close(mem_fd);
+
+    // adjust offset to correct value
+    vrt_block_addr += (vrt_offset/4);
+
+    // assign messages pointers
+    for ( m = 0; m < MSG_MAX_CNT; ++m )
+    {
+        msg_arisc[m] = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN)/4);
+        msg_arm[m]   = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN + MSG_CPU_BLOCK_SIZE)/4);
+    }
+
+    return 0;
+}
+
+void mem_deinit(void)
+{
+    munmap(vrt_block_addr, 2*MSG_BLOCK_SIZE);
+}
+
+
+
 
 /**
  * @brief   read a message from the ARISC cpu
@@ -689,47 +722,5 @@ void gpio_port_clear(uint32_t port, uint32_t mask)
 
 
 
-
-int32_t mem_init(void)
-{
-    int32_t     mem_fd;
-    uint32_t    vrt_offset = 0;
-    off_t       phy_block_addr = 0;
-    int32_t     m = 0;
-
-    // open physical memory file
-    if ( (mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0 ) return -1;
-
-    // calculate phy memory block start
-    vrt_offset = MSG_ARISC_BLOCK_ADDR % PHY_MEM_BLOCK_SIZE;
-    phy_block_addr = MSG_ARISC_BLOCK_ADDR - vrt_offset;
-
-    // make a block of phy memory visible in our user space
-    vrt_block_addr = mmap(NULL, 2*MSG_BLOCK_SIZE, PROT_READ | PROT_WRITE,
-        MAP_SHARED, mem_fd, phy_block_addr);
-
-    // exit program if mmap is failed
-    if (vrt_block_addr == MAP_FAILED) return -2;
-
-    // no need to keep phy memory file open after mmap
-    close(mem_fd);
-
-    // adjust offset to correct value
-    vrt_block_addr += (vrt_offset/4);
-
-    // assign messages pointers
-    for ( m = 0; m < MSG_MAX_CNT; ++m )
-    {
-        msg_arisc[m] = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN)/4);
-        msg_arm[m]   = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN + MSG_CPU_BLOCK_SIZE)/4);
-    }
-
-    return 0;
-}
-
-void mem_deinit(void)
-{
-    munmap(vrt_block_addr, 2*MSG_BLOCK_SIZE);
-}
 
 #endif

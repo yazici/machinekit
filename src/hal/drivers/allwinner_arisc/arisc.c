@@ -9,7 +9,7 @@
 #include "rtapi_app.h"      /* RTAPI realtime module decls */
                             /* this also includes config.h */
 #include "hal.h"            /* HAL public API decls */
-#include "h3.h"
+#include "api.h"
 
 #if !defined(TARGET_PLATFORM_ALLWINNER)
 //#error "This driver is for the Allwinner platform only"
@@ -35,22 +35,38 @@ static int32_t mem_state = 0;
 
 int32_t rtapi_app_main(void)
 {
-    mem_state = mem_init();
-    switch (mem_state) {
-        case -1: {
-            rtapi_print_msg(RTAPI_MSG_ERR, "%s: can't open /dev/mem file\n", comp_name);
-            return -1;
-        }
-        case -2: {
-            rtapi_print_msg(RTAPI_MSG_ERR, "%s: mmap() failed\n", comp_name);
-            return -1;
-        }
-    }
-
+    // component init
     comp_id = hal_init(comp_name);
-    if (comp_id < 0) {
+    if (comp_id < 0)
+    {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: ERROR: hal_init() failed\n", comp_name);
         return -1;
+    }
+
+#define PRINT_AND_EXIT(MSG) \
+    rtapi_print_msg(RTAPI_MSG_ERR, "%s: " MSG "\n", comp_name);\
+    hal_exit(comp_id);\
+    return -1;
+
+#define PRINT_AND_EXIT_P1(MSG,P1) \
+    rtapi_print_msg(RTAPI_MSG_ERR, "%s: " MSG "\n", comp_name, P1);\
+    hal_exit(comp_id);\
+    return -1;
+
+#define PRINT_AND_EXIT_P2(MSG,P1,P2) \
+    rtapi_print_msg(RTAPI_MSG_ERR, "%s: " MSG "\n", comp_name, P1, P2);\
+    hal_exit(comp_id);\
+    return -1;
+
+
+
+
+    // arisc shared memory init
+    mem_state = mem_init(H3);
+    switch (mem_state)
+    {
+        case -1: { PRINT_AND_EXIT("can't open /dev/mem file"); break; }
+        case -2: { PRINT_AND_EXIT("mmap() failed"); break; }
     }
 
     return 0;
