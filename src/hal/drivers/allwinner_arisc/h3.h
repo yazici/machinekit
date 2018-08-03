@@ -152,7 +152,7 @@ static struct msg_t * msg_arisc[MSG_MAX_CNT] = {0};
 static struct msg_t * msg_arm[MSG_MAX_CNT] = {0};
 static uint8_t msg_buf[MSG_LEN] = {0};
 
-static uint32_t *vrt_block_addr;
+static uint32_t *vrt_block_addr = 0;
 
 
 
@@ -690,7 +690,7 @@ void gpio_port_clear(uint32_t port, uint32_t mask)
 
 
 
-void mem_init(void)
+int32_t mem_init(void)
 {
     int32_t     mem_fd;
     uint32_t    vrt_offset = 0;
@@ -698,11 +698,7 @@ void mem_init(void)
     int32_t     m = 0;
 
     // open physical memory file
-    if ( (mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0 )
-    {
-       printf("ERROR: can't open /dev/mem file\n");
-       return;
-    }
+    if ( (mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0 ) return -1;
 
     // calculate phy memory block start
     vrt_offset = MSG_ARISC_BLOCK_ADDR % PHY_MEM_BLOCK_SIZE;
@@ -710,14 +706,13 @@ void mem_init(void)
 
     // make a block of phy memory visible in our user space
     vrt_block_addr = mmap(NULL, 2*MSG_BLOCK_SIZE, PROT_READ | PROT_WRITE,
-       MAP_SHARED, mem_fd, phy_block_addr);
+        MAP_SHARED, mem_fd, phy_block_addr);
 
     // exit program if mmap is failed
-    if (vrt_block_addr == MAP_FAILED)
-    {
-       printf("ERROR: mmap() failed\n");
-       return;
-    }
+    if (vrt_block_addr == MAP_FAILED) return -2;
+
+    // no need to keep phy memory file open after mmap
+    close(mem_fd);
 
     // adjust offset to correct value
     vrt_block_addr += (vrt_offset/4);
@@ -728,6 +723,8 @@ void mem_init(void)
         msg_arisc[m] = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN)/4);
         msg_arm[m]   = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN + MSG_CPU_BLOCK_SIZE)/4);
     }
+
+    return 0;
 }
 
 void mem_deinit(void)
