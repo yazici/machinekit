@@ -156,9 +156,10 @@ int32_t mem_init(uint8_t cpu_id)
     uint32_t    vrt_offset = 0;
     off_t       phy_block_addr = 0;
     int32_t     m = 0;
-    uint32_t    msg_block_addr =
-                    (cpu[cpu_id].ARISC_addr + cpu[cpu_id].ARISC_size - ARISC_CONF_SIZE) -
-                    MSG_BLOCK_SIZE ;
+    uint32_t    msg_block_addr = cpu_data[cpu_id].ARISC_addr +
+                                 cpu_data[cpu_id].ARISC_size -
+                                 ARISC_CONF_SIZE -
+                                 MSG_BLOCK_SIZE;
 
     // open physical memory file
     if ( (mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0 ) return -1;

@@ -28,6 +28,9 @@ static int32_t comp_id;
 static const uint8_t * comp_name = "arisc";
 static int32_t mem_state = 0;
 
+static int8_t *CPU;
+RTAPI_MP_STRING(CPU, "CPU name");
+
 
 
 
@@ -58,11 +61,22 @@ int32_t rtapi_app_main(void)
     hal_exit(comp_id);\
     return -1;
 
-
-
+    // get CPU id from arguments
+    if ( CPU != NULL )
+    {
+        uint8_t c;
+        for ( c = CPU_CNT; c--; )
+        {
+            if ( 0 == strcmp(CPU, cpu_data[c].name) )
+            {
+                cpu_id = c;
+                break;
+            }
+        }
+    }
 
     // arisc shared memory init
-    mem_state = mem_init(H3);
+    mem_state = mem_init(cpu_id);
     switch (mem_state)
     {
         case -1: { PRINT_AND_EXIT("can't open /dev/mem file"); break; }

@@ -21,7 +21,7 @@ enum
     CPU_CNT
 };
 
-struct cpu_t
+struct cpu_data_t
 {
     char *name;
     uint32_t ARISC_addr;
@@ -32,7 +32,7 @@ struct cpu_t
 
 
 static uint8_t cpu_id = H3;
-static struct cpu_t cpu[CPU_CNT] =
+static struct cpu_data_t cpu_data[CPU_CNT] =
 {
     {"H2+", 0x00040000, (8+8+32)*1024},
     {"H3",  0x00040000, (8+8+32)*1024},
