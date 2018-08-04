@@ -106,7 +106,7 @@ int32_t rtapi_app_main(void)
         uint8_t port, pin;
         for ( port = GPIO_PORTS_CNT; port--; )
         {
-            for ( port = GPIO_PINS_CNT; pin--; )
+            for ( pin = GPIO_PINS_CNT; pin--; )
             {
                 gpio_pin_state[port][pin] = hal_malloc(sizeof(hal_bit_t *));
                 gpio_pin_state_inv[port][pin] = hal_malloc(sizeof(hal_bit_t *));
