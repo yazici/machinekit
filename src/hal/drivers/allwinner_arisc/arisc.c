@@ -134,7 +134,7 @@ int32_t rtapi_app_main(void)
             // trying to find a correct port name
             for ( found = 0, port = GPIO_PORTS_CNT; port--; )
             {
-                if ( 0 == strcmp(token, gpio_port_name[port]) )
+                if ( 0 == memcmp(token, gpio_port_name[port], 2) )
                 {
                     found = 1;
                     break;
