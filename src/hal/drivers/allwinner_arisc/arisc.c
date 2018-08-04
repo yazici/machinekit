@@ -150,12 +150,12 @@ int32_t rtapi_app_main(void)
 
             // export pin input function
             retval = hal_pin_bit_newf (
-                HAL_OUT, &gpio_pin_state[port][pin], comp_id,
+                HAL_OUT, gpio_pin_state[port][pin], comp_id,
                 "%s.gpio.%s-in", comp_name, token );
 
             // export pin inverted input function
             retval += hal_pin_bit_newf (
-                HAL_OUT, &gpio_pin_state_inv[port][pin], comp_id,
+                HAL_OUT, gpio_pin_state_inv[port][pin], comp_id,
                 "%s.gpio.%s-in-not", comp_name, token );
 
             if (retval < 0) { PRINT_AND_EXIT_P1("GPIO pin %s export failed", token); }
