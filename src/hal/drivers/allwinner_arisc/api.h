@@ -48,7 +48,8 @@ struct msg_t
 
 
 
-#define GPIO_PINS_CNT 32 ///< number of GPIO port pins
+#define GPIO_PORTS_CNT  8   ///< number of GPIO ports
+#define GPIO_PINS_CNT   32 ///< number of GPIO port pins
 
 /// the GPIO port names
 enum { PA, PB, PC, PD, PE, PF, PG, PL };
@@ -138,6 +139,10 @@ static struct msg_t * msg_arm[MSG_MAX_CNT] = {0};
 static uint8_t msg_buf[MSG_LEN] = {0};
 
 static uint32_t *vrt_block_addr = 0;
+
+static const char *gpio_port_name[GPIO_PORTS_CNT] =
+    {"PA","PB","PC","PD","PE","PF","PG","PL"};
+
 
 
 
