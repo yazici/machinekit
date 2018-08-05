@@ -72,6 +72,9 @@ int32_t rtapi_app_main(void)
     if ( gpio_pins_export(gpio_in, GPIO_INPUT_PINS, comp_name, comp_id) ) EXIT;
     if ( gpio_pins_export(gpio_out, GPIO_OUTPUT_PINS, comp_name, comp_id) ) EXIT;
 
+    // export GPIO functions
+    if ( gpio_func_export(comp_name, comp_id) ) EXIT;
+
 #undef EXIT
 
     return 0;
