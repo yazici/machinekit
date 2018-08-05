@@ -368,13 +368,13 @@ static void gpio_read(void *arg, long period)
 
             if ( gpio_port_state[port] & gpio_pin_mask[pin] )
             {
-                *gpio_pin_state[port][pin] = 1;
-                *gpio_pin_state_inv[port][pin] = 0;
+                **gpio_pin_state[port][pin] = 1;
+                **gpio_pin_state_inv[port][pin] = 0;
             }
             else
             {
-                *gpio_pin_state[port][pin] = 0;
-                *gpio_pin_state_inv[port][pin] = 1;
+                **gpio_pin_state[port][pin] = 0;
+                **gpio_pin_state_inv[port][pin] = 1;
             }
         }
 
@@ -400,12 +400,12 @@ static void gpio_write(void *arg, long period)
 
             if ( gpio_port_state[port] & gpio_pin_mask[pin] )
             {
-                if ( !*gpio_pin_state[port][pin] || *gpio_pin_state_inv[port][pin])
+                if ( !**gpio_pin_state[port][pin] || **gpio_pin_state_inv[port][pin])
                 {
                     port_clr_mask |= gpio_pin_mask[pin];
                 }
             }
-            else if ( *gpio_pin_state[port][pin] || !*gpio_pin_state_inv[port][pin])
+            else if ( **gpio_pin_state[port][pin] || !**gpio_pin_state_inv[port][pin])
             {
                 port_set_mask |= gpio_pin_mask[pin];
             }
