@@ -41,6 +41,9 @@ RTAPI_MP_STRING(gpio_in, "GPIO input pins, comma separated");
 static int8_t *gpio_out;
 RTAPI_MP_STRING(gpio_out, "GPIO output pins, comma separated");
 
+#define EXIT { hal_exit(comp_id); return -1; }
+
+
 
 
 
@@ -60,8 +63,6 @@ int32_t rtapi_app_main(void)
     // get CPU id from arguments
     cpu_id_get(cpu);
 
-#define EXIT { hal_exit(comp_id); return -1; }
-
     // arisc shared memory init
     if ( msg_mem_init(cpu_id, comp_name) ) EXIT;
 
@@ -75,8 +76,7 @@ int32_t rtapi_app_main(void)
     // export GPIO functions
     if ( gpio_func_export(comp_name, comp_id) ) EXIT;
 
-#undef EXIT
-
+    // driver ready
     hal_ready(comp_id);
 
     return 0;
