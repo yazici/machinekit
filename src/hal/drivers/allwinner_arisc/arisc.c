@@ -77,6 +77,8 @@ int32_t rtapi_app_main(void)
 
 #undef EXIT
 
+    hal_ready(comp_id);
+
     return 0;
 }
 

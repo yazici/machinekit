@@ -49,6 +49,8 @@ int32_t rtapi_app_main(void)
         return -1;
     }
 
+    hal_ready(comp_id);
+
     return 0;
 }
 
