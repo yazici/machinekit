@@ -57,14 +57,17 @@ struct gpio_msg_state_t     { uint32_t state; };
 static const char *gpio_port_name[GPIO_PORTS_CNT] =
     {"PA","PB","PC","PD","PE","PF","PG","PL"};
 
-hal_bit_t **gpio_pin_state[GPIO_PORTS_CNT][GPIO_PINS_CNT] = {{0}};
-hal_bit_t **gpio_pin_state_inv[GPIO_PORTS_CNT][GPIO_PINS_CNT] = {{0}};
+static hal_bit_t **gpio_pin_state[GPIO_PORTS_CNT];
+static hal_bit_t **gpio_pin_state_inv[GPIO_PORTS_CNT];
 
 static uint32_t gpio_port_state[GPIO_PORTS_CNT] = {0};
 static uint32_t gpio_port_state_prev[GPIO_PORTS_CNT] = {0};
 
 static uint32_t gpio_port_output_mask[GPIO_PORTS_CNT] = {0};
 static uint32_t gpio_port_input_mask[GPIO_PORTS_CNT] = {0};
+
+static uint32_t gpio_inputs = 0;
+static uint32_t gpio_outputs = 0;
 
 static const uint32_t gpio_pin_mask[GPIO_PINS_CNT] =
 {
@@ -289,13 +292,13 @@ static int32_t gpio_pins_export
         if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
 
         // export pin function
-        retval = hal_pin_bit_newf( (type ? HAL_IN : HAL_OUT),
-            gpio_pin_state[port][pin], comp_id, "%s.gpio.%s-%s",
+        retval = hal_pin_bit_newf( HAL_IO,
+            &gpio_pin_state[port][pin], comp_id, "%s.gpio.%s-%s",
             comp_name, token, (type ? "out" : "in") );
 
         // export pin inverted function
-        retval += hal_pin_bit_newf( (type ? HAL_IN : HAL_OUT),
-            gpio_pin_state_inv[port][pin], comp_id, "%s.gpio.%s-%s-not",
+        retval += hal_pin_bit_newf( HAL_IO,
+            &gpio_pin_state_inv[port][pin], comp_id, "%s.gpio.%s-%s-not",
             comp_name, token, (type ? "out" : "in") );
 
         if (retval < 0)
@@ -308,11 +311,13 @@ static int32_t gpio_pins_export
         // configure GPIO pin
         if ( type )
         {
+            gpio_outputs++;
             gpio_port_output_mask[port] |= gpio_pin_mask[pin];
             gpio_pin_setup_for_output(port, pin);
         }
         else
         {
+            gpio_inputs++;
             gpio_port_input_mask[port] |= gpio_pin_mask[pin];
             gpio_pin_setup_for_input(port, pin);
         }
@@ -326,21 +331,18 @@ static int32_t gpio_pins_export
 
 static int32_t gpio_pins_malloc(const char *comp_name)
 {
-    uint8_t port, pin;
+    uint8_t port;
     for ( port = GPIO_PORTS_CNT; port--; )
     {
-        for ( pin = GPIO_PINS_CNT; pin--; )
-        {
-            gpio_pin_state[port][pin] = hal_malloc(sizeof(hal_bit_t *));
-            gpio_pin_state_inv[port][pin] = hal_malloc(sizeof(hal_bit_t *));
+        gpio_pin_state[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
+        gpio_pin_state_inv[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
 
-            if ( !gpio_pin_state[port][pin] || !gpio_pin_state_inv[port][pin] )
-            {
-                rtapi_print_msg(RTAPI_MSG_ERR,
-                    "%s: [GPIO] pin %s%d hal_malloc() failed \n",
-                    comp_name, gpio_port_name[port], pin);
-                return -1;
-            }
+        if ( !gpio_pin_state[port] || !gpio_pin_state_inv[port] )
+        {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "%s: [GPIO] port %s hal_malloc() failed \n",
+                comp_name, gpio_port_name[port]);
+            return -1;
         }
     }
 
@@ -352,8 +354,9 @@ static int32_t gpio_pins_malloc(const char *comp_name)
 
 static void gpio_read(void *arg, long period)
 {
-    static uint8_t port, pin;
+    if ( !gpio_inputs ) return;
 
+    uint32_t port, pin;
     for ( port = GPIO_PORTS_CNT; port--; )
     {
         if ( !gpio_port_input_mask[port] ) continue;
@@ -368,13 +371,13 @@ static void gpio_read(void *arg, long period)
 
             if ( gpio_port_state[port] & gpio_pin_mask[pin] )
             {
-                **gpio_pin_state[port][pin] = 1;
-                **gpio_pin_state_inv[port][pin] = 0;
+                *gpio_pin_state[port][pin] = 1;
+                *gpio_pin_state_inv[port][pin] = 0;
             }
             else
             {
-                **gpio_pin_state[port][pin] = 0;
-                **gpio_pin_state_inv[port][pin] = 1;
+                *gpio_pin_state[port][pin] = 0;
+                *gpio_pin_state_inv[port][pin] = 1;
             }
         }
 
@@ -384,8 +387,10 @@ static void gpio_read(void *arg, long period)
 
 static void gpio_write(void *arg, long period)
 {
-    static uint8_t port, pin;
-    static uint32_t port_clr_mask, port_set_mask;
+    if ( !gpio_outputs ) return;
+
+    uint32_t port, pin;
+    uint32_t port_clr_mask, port_set_mask;
 
     for ( port = GPIO_PORTS_CNT; port--; )
     {
@@ -400,14 +405,17 @@ static void gpio_write(void *arg, long period)
 
             if ( gpio_port_state[port] & gpio_pin_mask[pin] )
             {
-                if ( !**gpio_pin_state[port][pin] || **gpio_pin_state_inv[port][pin])
+                if ( !*gpio_pin_state[port][pin] || *gpio_pin_state_inv[port][pin])
                 {
                     port_clr_mask |= gpio_pin_mask[pin];
                 }
             }
-            else if ( **gpio_pin_state[port][pin] || !**gpio_pin_state_inv[port][pin])
+            else
             {
-                port_set_mask |= gpio_pin_mask[pin];
+                if ( *gpio_pin_state[port][pin] || !*gpio_pin_state_inv[port][pin])
+                {
+                    port_set_mask |= gpio_pin_mask[pin];
+                }
             }
         }
 
