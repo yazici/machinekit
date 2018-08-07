@@ -60,6 +60,9 @@ static const char *gpio_port_name[GPIO_PORTS_CNT] =
 static hal_bit_t **gpio_pin_state[GPIO_PORTS_CNT];
 static hal_bit_t **gpio_pin_state_inv[GPIO_PORTS_CNT];
 
+static hal_bit_t gpio_pin_state_prev[GPIO_PORTS_CNT][GPIO_PINS_CNT];
+static hal_bit_t gpio_pin_state_inv_prev[GPIO_PORTS_CNT][GPIO_PINS_CNT];
+
 static uint32_t gpio_port_state[GPIO_PORTS_CNT] = {0};
 static uint32_t gpio_port_state_prev[GPIO_PORTS_CNT] = {0};
 
@@ -403,19 +406,20 @@ static void gpio_write(void *arg, long period)
         {
             if ( !(gpio_port_output_mask[port] & gpio_pin_mask[pin]) ) continue;
 
-            if ( gpio_port_state[port] & gpio_pin_mask[pin] )
+            if ( *gpio_pin_state[port][pin] != gpio_pin_state_prev[port][pin] )
             {
-                if ( !*gpio_pin_state[port][pin] || *gpio_pin_state_inv[port][pin])
-                {
-                    port_clr_mask |= gpio_pin_mask[pin];
-                }
+                gpio_pin_state_prev[port][pin] = *gpio_pin_state[port][pin];
+
+                if ( *gpio_pin_state[port][pin] ) port_set_mask |= gpio_pin_mask[pin];
+                else                              port_clr_mask |= gpio_pin_mask[pin];
             }
-            else
+
+            if ( *gpio_pin_state_inv[port][pin] != gpio_pin_state_inv_prev[port][pin] )
             {
-                if ( *gpio_pin_state[port][pin] || !*gpio_pin_state_inv[port][pin])
-                {
-                    port_set_mask |= gpio_pin_mask[pin];
-                }
+                gpio_pin_state_inv_prev[port][pin] = *gpio_pin_state_inv[port][pin];
+
+                if ( *gpio_pin_state_inv[port][pin] ) port_clr_mask |= gpio_pin_mask[pin];
+                else                                  port_set_mask |= gpio_pin_mask[pin];
             }
         }
 
