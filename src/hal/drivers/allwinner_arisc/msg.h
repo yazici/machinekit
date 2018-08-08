@@ -163,37 +163,24 @@ int8_t msg_read(uint8_t type, uint8_t * msg)
  * @param   type    user defined message type (0..0xFF)
  * @param   msg     pointer to the message buffer
  * @param   length  the length of a message (0..MSG_LEN) )
- * @param   bswap   0 - if you sending an array of 32bit numbers, 1 - for the text
  *
  * @retval   0 (message sent)
  * @retval  -1 (message not sent)
  */
-int8_t msg_send(uint8_t type, uint8_t * msg, uint8_t length, uint8_t bswap)
+int8_t msg_send(uint8_t type, uint8_t * msg, uint8_t length)
 {
-    static uint8_t last = 0;
-    static uint8_t m = 0;
-    static uint8_t i = 0;
-    static uint32_t * link;
+    static uint8_t m = 0, i = 0;
 
     // find next free message slot
-    for ( i = MSG_MAX_CNT, m = last; i--; )
+    for ( i = MSG_MAX_CNT; i--; m++ )
     {
+        if ( m >= MSG_MAX_CNT ) m = 0;
+
         // sending message
         if ( !msg_arm[m]->unread )
         {
             // copy message to the buffer
-            memset( (uint8_t*)((uint8_t*)&msg_arm[m]->msg + length/4*4), 0, 4);
             memcpy(&msg_arm[m]->msg, msg, length);
-
-            if ( bswap )
-            {
-                // swap message data bytes for correct reading by ARISC
-                link = ((uint32_t*) &msg_arm[m]->msg);
-                for ( i = length / 4 + 1; i--; link++ )
-                {
-                    *link = __bswap_32(*link);
-                }
-            }
 
             // set message data
             msg_arm[m]->type   = type;
@@ -201,12 +188,8 @@ int8_t msg_send(uint8_t type, uint8_t * msg, uint8_t length, uint8_t bswap)
             msg_arm[m]->unread = 1;
 
             // message sent
-            last = m;
             return 0;
         }
-
-        ++m;
-        if ( m >= MSG_MAX_CNT ) m = 0;
     }
 
     // message not sent
