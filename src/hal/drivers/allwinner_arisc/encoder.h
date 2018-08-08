@@ -67,7 +67,7 @@ void encoder_pin_setup(uint8_t c, uint8_t phase, uint8_t port, uint8_t pin)
     tx.port = port;
     tx.pin = pin;
 
-    msg_send(ENCODER_MSG_PIN_SETUP, (uint8_t*)&tx, 4*4, 0);
+    msg_send(ENCODER_MSG_PIN_SETUP, (uint8_t*)&tx, 4*4);
 }
 
 /**
@@ -87,7 +87,7 @@ void encoder_setup(uint8_t c, uint8_t using_B, uint8_t using_Z)
     tx.using_B = using_B;
     tx.using_Z = using_Z;
 
-    msg_send(ENCODER_MSG_SETUP, (uint8_t*)&tx, 3*4, 0);
+    msg_send(ENCODER_MSG_SETUP, (uint8_t*)&tx, 3*4);
 }
 
 /**
@@ -102,7 +102,7 @@ void encoder_state_set(uint8_t c, uint8_t state)
     tx.ch = c;
     tx.state = state;
 
-    msg_send(ENCODER_MSG_STATE_SET, (uint8_t*)&tx, 2*4, 0);
+    msg_send(ENCODER_MSG_STATE_SET, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -118,7 +118,7 @@ void encoder_counts_set(uint8_t c, int32_t counts)
     tx.ch = c;
     tx.counts = counts;
 
-    msg_send(ENCODER_MSG_COUNTS_SET, (uint8_t*)&tx, 2*4, 0);
+    msg_send(ENCODER_MSG_COUNTS_SET, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -136,7 +136,7 @@ uint8_t encoder_state_get(uint8_t c)
 
     tx.ch = c;
 
-    msg_send(ENCODER_MSG_STATE_GET, (uint8_t*)&tx, 1*4, 0);
+    msg_send(ENCODER_MSG_STATE_GET, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
     uint32_t n = 0;
@@ -161,7 +161,7 @@ int32_t encoder_counts_get(uint8_t c)
 
     tx.ch = c;
 
-    msg_send(ENCODER_MSG_COUNTS_GET, (uint8_t*)&tx, 1*4, 0);
+    msg_send(ENCODER_MSG_COUNTS_GET, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
     uint32_t n = 0;

@@ -101,7 +101,7 @@ void gpio_pin_setup_for_output(uint32_t port, uint32_t pin)
     tx.port = port;
     tx.pin  = pin;
 
-    msg_send(GPIO_MSG_SETUP_FOR_OUTPUT, (uint8_t*)&tx, 2*4, 0);
+    msg_send(GPIO_MSG_SETUP_FOR_OUTPUT, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -117,7 +117,7 @@ void gpio_pin_setup_for_input(uint32_t port, uint32_t pin)
     tx.port = port;
     tx.pin  = pin;
 
-    msg_send(GPIO_MSG_SETUP_FOR_INPUT, (uint8_t*)&tx, 2*4, 0);
+    msg_send(GPIO_MSG_SETUP_FOR_INPUT, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -134,7 +134,7 @@ uint32_t gpio_port_get(uint32_t port)
 
     tx.port = port;
 
-    msg_send(GPIO_MSG_PORT_GET, (uint8_t*)&tx, 1*4, 0);
+    msg_send(GPIO_MSG_PORT_GET, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
     for ( n = 999999; n--; )
@@ -165,7 +165,7 @@ void gpio_port_set(uint32_t port, uint32_t mask)
     tx.port = port;
     tx.mask = mask;
 
-    msg_send(GPIO_MSG_PORT_SET, (uint8_t*)&tx, 2*4, 0);
+    msg_send(GPIO_MSG_PORT_SET, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -187,7 +187,7 @@ void gpio_port_clear(uint32_t port, uint32_t mask)
     tx.port = port;
     tx.mask = mask;
 
-    msg_send(GPIO_MSG_PORT_CLEAR, (uint8_t*)&tx, 2*4, 0);
+    msg_send(GPIO_MSG_PORT_CLEAR, (uint8_t*)&tx, 2*4);
 }
 
 

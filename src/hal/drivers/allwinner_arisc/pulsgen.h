@@ -60,7 +60,7 @@ void pulsgen_pin_setup(uint8_t c, uint8_t port, uint8_t pin, uint8_t inverted)
     tx.pin = pin;
     tx.inverted = inverted;
 
-    msg_send(PULSGEN_MSG_PIN_SETUP, (uint8_t*)&tx, 4*4, 0);
+    msg_send(PULSGEN_MSG_PIN_SETUP, (uint8_t*)&tx, 4*4);
 }
 
 /**
@@ -91,7 +91,7 @@ void pulsgen_task_setup
     tx.pin_hold_time = pin_hold_time;
     tx.start_delay = start_delay;
 
-    msg_send(PULSGEN_MSG_TASK_SETUP, (uint8_t*)&tx, 5*4, 0);
+    msg_send(PULSGEN_MSG_TASK_SETUP, (uint8_t*)&tx, 5*4);
 }
 
 /**
@@ -105,7 +105,7 @@ void pulsgen_task_abort(uint8_t c)
 
     tx.ch = c;
 
-    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 1*4, 0);
+    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 1*4);
 }
 
 /**
@@ -123,7 +123,7 @@ uint8_t pulsgen_task_state(uint8_t c)
 
     tx.ch = c;
 
-    msg_send(PULSGEN_MSG_TASK_STATE, (uint8_t*)&tx, 1*4, 0);
+    msg_send(PULSGEN_MSG_TASK_STATE, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
     uint32_t n = 0;
@@ -148,7 +148,7 @@ uint32_t pulsgen_task_toggles(uint8_t c)
 
     tx.ch = c;
 
-    msg_send(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&tx, 1*4, 0);
+    msg_send(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
     uint32_t n = 0;
