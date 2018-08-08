@@ -188,15 +188,15 @@ void gpio_pin_clear(uint32_t port, uint32_t pin)
  */
 uint32_t gpio_port_get(uint32_t port)
 {
-    struct gpio_msg_port_t tx = *((struct gpio_msg_port_t *) &msg_buf);
-    struct gpio_msg_state_t rx = *((struct gpio_msg_state_t *) &msg_buf);
+    static uint32_t n = 0;
+    static struct gpio_msg_port_t tx = *((struct gpio_msg_port_t *) &msg_buf);
+    static struct gpio_msg_state_t rx = *((struct gpio_msg_state_t *) &msg_buf);
 
     tx.port = port;
 
     msg_send(GPIO_MSG_PORT_GET, (uint8_t*)&tx, 1*4, 0);
 
     // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
     for ( n = 999999; n--; )
     {
         if ( msg_read(GPIO_MSG_PORT_GET, (uint8_t*)&rx, 0) < 0 ) continue;
@@ -220,7 +220,7 @@ uint32_t gpio_port_get(uint32_t port)
  */
 void gpio_port_set(uint32_t port, uint32_t mask)
 {
-    struct gpio_msg_port_mask_t tx = *((struct gpio_msg_port_mask_t *) &msg_buf);
+    static struct gpio_msg_port_mask_t tx = *((struct gpio_msg_port_mask_t *) &msg_buf);
 
     tx.port = port;
     tx.mask = mask;
@@ -242,7 +242,7 @@ void gpio_port_set(uint32_t port, uint32_t mask)
  */
 void gpio_port_clear(uint32_t port, uint32_t mask)
 {
-    struct gpio_msg_port_mask_t tx = *((struct gpio_msg_port_mask_t *) &msg_buf);
+    static struct gpio_msg_port_mask_t tx = *((struct gpio_msg_port_mask_t *) &msg_buf);
 
     tx.port = port;
     tx.mask = mask;
