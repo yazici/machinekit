@@ -7,6 +7,10 @@
 #ifndef _ENCODER_H
 #define _ENCODER_H
 
+#include "rtapi.h"
+#include "rtapi_app.h"
+#include "hal.h"
+
 #include <msg.h>
 
 
@@ -131,6 +135,7 @@ void encoder_counts_set(uint8_t c, int32_t counts)
  */
 uint8_t encoder_state_get(uint8_t c)
 {
+    static uint32_t n;
     struct encoder_msg_ch_t tx = *((struct encoder_msg_ch_t *) &msg_buf);
     struct encoder_msg_state_get_t rx = *((struct encoder_msg_state_get_t *) &msg_buf);
 
@@ -139,7 +144,6 @@ uint8_t encoder_state_get(uint8_t c)
     msg_send(ENCODER_MSG_STATE_GET, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
     for ( n = 999999; n--; )
     {
         if ( msg_read(ENCODER_MSG_STATE_GET, (uint8_t*)&rx) < 0 ) continue;
@@ -156,6 +160,7 @@ uint8_t encoder_state_get(uint8_t c)
  */
 int32_t encoder_counts_get(uint8_t c)
 {
+    static uint32_t n;
     struct encoder_msg_ch_t tx = *((struct encoder_msg_ch_t *) &msg_buf);
     struct encoder_msg_counts_get_t rx = *((struct encoder_msg_counts_get_t *) &msg_buf);
 
@@ -164,7 +169,6 @@ int32_t encoder_counts_get(uint8_t c)
     msg_send(ENCODER_MSG_COUNTS_GET, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
     for ( n = 999999; n--; )
     {
         if ( msg_read(ENCODER_MSG_COUNTS_GET, (uint8_t*)&rx) < 0 ) continue;

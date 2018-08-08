@@ -118,6 +118,7 @@ void pulsgen_task_abort(uint8_t c)
  */
 uint8_t pulsgen_task_state(uint8_t c)
 {
+    static uint32_t n;
     struct pulsgen_msg_ch_t tx = *((struct pulsgen_msg_ch_t *) &msg_buf);
     struct pulsgen_msg_state_t rx = *((struct pulsgen_msg_state_t *) &msg_buf);
 
@@ -126,7 +127,6 @@ uint8_t pulsgen_task_state(uint8_t c)
     msg_send(PULSGEN_MSG_TASK_STATE, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
     for ( n = 999999; n--; )
     {
         if ( msg_read(PULSGEN_MSG_TASK_STATE, (uint8_t*)&rx) < 0 ) continue;
@@ -143,6 +143,7 @@ uint8_t pulsgen_task_state(uint8_t c)
  */
 uint32_t pulsgen_task_toggles(uint8_t c)
 {
+    static uint32_t n;
     struct pulsgen_msg_ch_t tx = *((struct pulsgen_msg_ch_t *) &msg_buf);
     struct pulsgen_msg_toggles_t rx = *((struct pulsgen_msg_toggles_t *) &msg_buf);
 
@@ -151,7 +152,6 @@ uint32_t pulsgen_task_toggles(uint8_t c)
     msg_send(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&tx, 1*4);
 
     // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
     for ( n = 999999; n--; )
     {
         if ( msg_read(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&rx) < 0 ) continue;
