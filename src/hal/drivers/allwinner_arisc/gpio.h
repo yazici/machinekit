@@ -121,66 +121,6 @@ void gpio_pin_setup_for_input(uint32_t port, uint32_t pin)
 }
 
 /**
- * @brief   get pin state
- * @param   port    GPIO port number    (0 .. GPIO_PORTS_CNT)
- * @param   pin     GPIO pin number     (0 .. GPIO_PINS_CNT)
- * @retval  1 (HIGH)
- * @retval  0 (LOW)
- */
-uint32_t gpio_pin_get(uint32_t port, uint32_t pin)
-{
-    struct gpio_msg_port_pin_t tx = *((struct gpio_msg_port_pin_t *) &msg_buf);
-    struct gpio_msg_state_t rx = *((struct gpio_msg_state_t *) &msg_buf);
-
-    tx.port = port;
-    tx.pin = pin;
-
-    msg_send(GPIO_MSG_PIN_GET, (uint8_t*)&tx, 2*4, 0);
-
-    // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
-    for ( n = 999999; n--; )
-    {
-        if ( msg_read(GPIO_MSG_PIN_GET, (uint8_t*)&rx) < 0 ) continue;
-        else return rx.state;
-    }
-
-    return 0;
-}
-
-/**
- * @brief   set pin state to HIGH (1)
- * @param   port    GPIO port number    (0 .. GPIO_PORTS_CNT)
- * @param   pin     GPIO pin number     (0 .. GPIO_PINS_CNT)
- * @retval  none
- */
-void gpio_pin_set(uint32_t port, uint32_t pin)
-{
-    struct gpio_msg_port_pin_t tx = *((struct gpio_msg_port_pin_t *) &msg_buf);
-
-    tx.port = port;
-    tx.pin  = pin;
-
-    msg_send(GPIO_MSG_PIN_SET, (uint8_t*)&tx, 2*4, 0);
-}
-
-/**
- * @brief   set pin state to LOW (0)
- * @param   port    GPIO port number    (0 .. GPIO_PORTS_CNT)
- * @param   pin     GPIO pin number     (0 .. GPIO_PINS_CNT)
- * @retval  none
- */
-void gpio_pin_clear(uint32_t port, uint32_t pin)
-{
-    struct gpio_msg_port_pin_t tx = *((struct gpio_msg_port_pin_t *) &msg_buf);
-
-    tx.port = port;
-    tx.pin  = pin;
-
-    msg_send(GPIO_MSG_PIN_CLEAR, (uint8_t*)&tx, 2*4, 0);
-}
-
-/**
  * @brief   get port state
  * @param   port    GPIO port number (0 .. GPIO_PORTS_CNT)
  * @note    each bit value of returned value represents port pin state
