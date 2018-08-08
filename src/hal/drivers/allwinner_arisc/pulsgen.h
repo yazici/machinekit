@@ -129,7 +129,7 @@ uint8_t pulsgen_task_state(uint8_t c)
     uint32_t n = 0;
     for ( n = 999999; n--; )
     {
-        if ( msg_read(PULSGEN_MSG_TASK_STATE, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(PULSGEN_MSG_TASK_STATE, (uint8_t*)&rx) < 0 ) continue;
         else return rx.state;
     }
 
@@ -154,7 +154,7 @@ uint32_t pulsgen_task_toggles(uint8_t c)
     uint32_t n = 0;
     for ( n = 999999; n--; )
     {
-        if ( msg_read(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(PULSGEN_MSG_TASK_TOGGLES, (uint8_t*)&rx) < 0 ) continue;
         else return rx.toggles;
     }
 

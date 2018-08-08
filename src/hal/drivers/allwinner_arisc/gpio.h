@@ -141,7 +141,7 @@ uint32_t gpio_pin_get(uint32_t port, uint32_t pin)
     uint32_t n = 0;
     for ( n = 999999; n--; )
     {
-        if ( msg_read(GPIO_MSG_PIN_GET, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(GPIO_MSG_PIN_GET, (uint8_t*)&rx) < 0 ) continue;
         else return rx.state;
     }
 
@@ -199,7 +199,7 @@ uint32_t gpio_port_get(uint32_t port)
     // finite loop, only 999999 tries to read an answer
     for ( n = 999999; n--; )
     {
-        if ( msg_read(GPIO_MSG_PORT_GET, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(GPIO_MSG_PORT_GET, (uint8_t*)&rx) < 0 ) continue;
         else return rx.state;
     }
 

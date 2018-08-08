@@ -142,7 +142,7 @@ uint8_t encoder_state_get(uint8_t c)
     uint32_t n = 0;
     for ( n = 999999; n--; )
     {
-        if ( msg_read(ENCODER_MSG_STATE_GET, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(ENCODER_MSG_STATE_GET, (uint8_t*)&rx) < 0 ) continue;
         else return rx.state;
     }
 
@@ -167,7 +167,7 @@ int32_t encoder_counts_get(uint8_t c)
     uint32_t n = 0;
     for ( n = 999999; n--; )
     {
-        if ( msg_read(ENCODER_MSG_COUNTS_GET, (uint8_t*)&rx, 0) < 0 ) continue;
+        if ( msg_read(ENCODER_MSG_COUNTS_GET, (uint8_t*)&rx) < 0 ) continue;
         else return rx.counts;
     }
 

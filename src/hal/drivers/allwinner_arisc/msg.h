@@ -129,45 +129,29 @@ void msg_mem_deinit(void)
  *
  * @param   type    user defined message type (0..0xFF)
  * @param   msg     pointer to the message buffer
- * @param   bswap   0 - if you sending an array of 32bit numbers, 1 - for the text
  *
  * @retval   0 (message read)
  * @retval  -1 (message not read)
  */
-int8_t msg_read(uint8_t type, uint8_t * msg, uint8_t bswap)
+int8_t msg_read(uint8_t type, uint8_t * msg)
 {
-    static uint8_t last = 0;
-    static uint8_t m = 0;
-    static uint8_t i = 0;
-    static uint32_t * link;
+    static uint8_t m = 0, i = 0;
 
     // find next unread message
-    for ( i = MSG_MAX_CNT, m = last; i--; )
+    for ( i = MSG_MAX_CNT; i--; m++ )
     {
+        if ( m >= MSG_MAX_CNT ) m = 0;
+
         // process message only of current type
         if ( msg_arisc[m]->unread && msg_arisc[m]->type == type )
         {
-            if ( bswap )
-            {
-                // swap message data bytes for correct reading by ARM
-                link = ((uint32_t*) &msg_arisc[m]->msg);
-                for ( i = msg_arisc[m]->length / 4 + 1; i--; link++ )
-                {
-                    *link = __bswap_32(*link);
-                }
-            }
-
             // copy message to the buffer
             memcpy(msg, &msg_arisc[m]->msg, msg_arisc[m]->length);
 
             // message read
             msg_arisc[m]->unread = 0;
-            last = m;
             return msg_arisc[m]->length;
         }
-
-        ++m;
-        if ( m >= MSG_MAX_CNT ) m = 0;
     }
 
     return -1;
