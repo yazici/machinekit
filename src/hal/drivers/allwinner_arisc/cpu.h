@@ -10,6 +10,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "rtapi.h"
+#include "rtapi_app.h"
+#include "hal.h"
+
 
 
 
@@ -36,6 +40,9 @@ struct cpu_data_t
 
 
 
+static int8_t *cpu;
+RTAPI_MP_STRING(cpu, "CPU name");
+
 static uint8_t cpu_id = H3;
 static const struct cpu_data_t cpu_data[CPU_CNT] =
 {
@@ -51,14 +58,14 @@ static const struct cpu_data_t cpu_data[CPU_CNT] =
 
 
 
-static void cpu_id_get(char *arg_str)
+static void cpu_id_get()
 {
-    if ( arg_str == NULL ) return;
+    if ( cpu == NULL ) return;
 
     uint8_t c;
     for ( c = CPU_CNT; c--; )
     {
-        if ( 0 == strcmp(arg_str, cpu_data[c].name) )
+        if ( 0 == strcmp(cpu, cpu_data[c].name) )
         {
             cpu_id = c;
             return;

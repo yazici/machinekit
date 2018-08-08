@@ -9,7 +9,11 @@
 
 #include <stdint.h>
 #include <string.h>
-#include "hal_types.h"
+
+#include "rtapi.h"
+#include "rtapi_app.h"
+#include "hal.h"
+
 #include "msg.h"
 
 
@@ -53,6 +57,11 @@ struct gpio_msg_state_t     { uint32_t state; };
 
 
 
+
+static int8_t *gpio_in;
+RTAPI_MP_STRING(gpio_in, "GPIO input pins, comma separated");
+static int8_t *gpio_out;
+RTAPI_MP_STRING(gpio_out, "GPIO output pins, comma separated");
 
 static const char *gpio_name[GPIO_PORTS_CNT] =
     {"PA","PB","PC","PD","PE","PF","PG","PL"};
@@ -197,70 +206,72 @@ void gpio_port_clear(uint32_t port, uint32_t mask)
 
 
 
-static int32_t gpio_pins_export
-(
-    char *arg_str,
-    uint8_t type,
-    const char *comp_name,
-    int32_t comp_id
-)
+static int32_t gpio_pins_export(const char *comp_name, int32_t comp_id)
 {
-    if ( arg_str == NULL ) return 0;
+    int8_t* arg_str[2] = {gpio_in, gpio_out};
+    int8_t n;
 
-    int8_t *data = arg_str, *token;
-    uint8_t port, pin, found;
-    int32_t retval;
-
-    while ( (token = strtok(data, ",")) != NULL )
+    for ( n = 2; n--; )
     {
-        if ( data != NULL ) data = NULL;
-        if ( strlen(token) < 3 ) continue;
+        if ( !arg_str[n] ) continue;
 
-        // trying to find a correct port name
-        for ( found = 0, port = GPIO_PORTS_CNT; port--; )
+        int8_t *data = arg_str[n], *token;
+        uint8_t port, pin, found;
+        int32_t retval;
+        int8_t* type_str = n ? "out" : "in";
+
+        while ( (token = strtok(data, ",")) != NULL )
         {
-            if ( 0 == memcmp(token, gpio_name[port], 2) )
+            if ( data != NULL ) data = NULL;
+            if ( strlen(token) < 3 ) continue;
+
+            // trying to find a correct port name
+            for ( found = 0, port = GPIO_PORTS_CNT; port--; )
             {
-                found = 1;
-                break;
+                if ( 0 == memcmp(token, gpio_name[port], 2) )
+                {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if ( !found ) continue;
+
+            // trying to find a correct pin number
+            pin = (uint8_t) strtoul(&token[2], NULL, 10);
+
+            if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
+
+            // export pin function
+            retval = hal_pin_bit_newf(HAL_IO, &gpio_hal_0[port][pin], comp_id,
+                "%s.gpio.%s-%s", comp_name, token, type_str);
+
+            // export pin inverted function
+            retval += hal_pin_bit_newf(HAL_IO, &gpio_hal_1[port][pin], comp_id,
+                "%s.gpio.%s-%s-not", comp_name, token, type_str);
+
+            if (retval < 0)
+            {
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] pin %s export failed \n",
+                    comp_name, token);
+                return -1;
+            }
+
+            // configure GPIO pin
+            if ( n )
+            {
+                gpio_out_cnt++;
+                gpio_out_mask[port] |= gpio_mask[pin];
+                gpio_pin_setup_for_output(port, pin);
+            }
+            else
+            {
+                gpio_in_cnt++;
+                gpio_in_mask[port] |= gpio_mask[pin];
+                gpio_pin_setup_for_input(port, pin);
             }
         }
 
-        if ( !found ) continue;
-
-        // trying to find a correct pin number
-        pin = (uint8_t) strtoul(&token[2], NULL, 10);
-
-        if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
-
-        // export pin function
-        retval = hal_pin_bit_newf(HAL_IO, &gpio_hal_0[port][pin], comp_id,
-            "%s.gpio.%s-%s", comp_name, token, (type ? "out" : "in") );
-
-        // export pin inverted function
-        retval += hal_pin_bit_newf(HAL_IO, &gpio_hal_1[port][pin], comp_id,
-            "%s.gpio.%s-%s-not", comp_name, token, (type ? "out" : "in") );
-
-        if (retval < 0)
-        {
-            rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] pin %s export failed \n",
-                comp_name, token);
-            return -1;
-        }
-
-        // configure GPIO pin
-        if ( type )
-        {
-            gpio_out_cnt++;
-            gpio_out_mask[port] |= gpio_mask[pin];
-            gpio_pin_setup_for_output(port, pin);
-        }
-        else
-        {
-            gpio_in_cnt++;
-            gpio_in_mask[port] |= gpio_mask[pin];
-            gpio_pin_setup_for_input(port, pin);
-        }
     }
 
     return 0;
