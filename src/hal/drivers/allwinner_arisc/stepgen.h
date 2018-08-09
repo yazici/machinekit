@@ -211,8 +211,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 
     // export HAL functions
     r = 0;
-    r+= hal_export_functf(stepgen_capture_pos, 0, 0, 0, comp_id, "%s.stepgen.capture-position", comp_name);
-    r+= hal_export_functf(stepgen_update_freq, 0, 0, 0, comp_id, "%s.stepgen.update-freq", comp_name);
+    r+= hal_export_functf(stepgen_capture_pos, 0, 1, 0, comp_id, "%s.stepgen.capture-position", comp_name);
+    r+= hal_export_functf(stepgen_update_freq, 0, 1, 0, comp_id, "%s.stepgen.update-freq", comp_name);
     if ( r )
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] HAL functions export failed\n", comp_name);
