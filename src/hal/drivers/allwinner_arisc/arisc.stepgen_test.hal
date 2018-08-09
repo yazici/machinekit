@@ -1,0 +1,10 @@
+loadrt threads name1=servo-thread period1=1000000 fp1=1
+
+loadrt arisc step_out=PA12,PA11,PA6 dir_out=PA1,PA0,PA3
+
+addf arisc.stepgen.capture-position servo-thread
+addf arisc.stepgen.update-freq servo-thread
+
+start
+
+show pin arisc
