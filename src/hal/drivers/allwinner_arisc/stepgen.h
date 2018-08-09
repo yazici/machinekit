@@ -197,8 +197,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 
         EXPORT(s32,rawcounts,"rawcounts", 0);
         EXPORT(s32,counts,"counts", 0);
-        EXPORT(float,freq,"frequency", 0);
-        EXPORT(float,pos_fb,"position-fb", 0);
+        EXPORT(float,freq,"frequency", 0.0);
+        EXPORT(float,pos_fb,"position-fb", 0.0);
     }
     if ( r )
     {
