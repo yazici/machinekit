@@ -202,107 +202,6 @@ void gpio_port_clear(uint32_t port, uint32_t mask)
 
 
 
-
-
-
-
-static int32_t gpio_pins_export(const char *comp_name, int32_t comp_id)
-{
-    int8_t* arg_str[2] = {gpio_in, gpio_out};
-    int8_t n;
-
-    for ( n = 2; n--; )
-    {
-        if ( !arg_str[n] ) continue;
-
-        int8_t *data = arg_str[n], *token;
-        uint8_t port, pin, found;
-        int32_t retval;
-        int8_t* type_str = n ? "out" : "in";
-
-        while ( (token = strtok(data, ",")) != NULL )
-        {
-            if ( data != NULL ) data = NULL;
-            if ( strlen(token) < 3 ) continue;
-
-            // trying to find a correct port name
-            for ( found = 0, port = GPIO_PORTS_CNT; port--; )
-            {
-                if ( 0 == memcmp(token, gpio_name[port], 2) )
-                {
-                    found = 1;
-                    break;
-                }
-            }
-
-            if ( !found ) continue;
-
-            // trying to find a correct pin number
-            pin = (uint8_t) strtoul(&token[2], NULL, 10);
-
-            if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
-
-            // export pin function
-            retval = hal_pin_bit_newf(HAL_IO, &gpio_hal_0[port][pin], comp_id,
-                "%s.gpio.%s-%s", comp_name, token, type_str);
-
-            // export pin inverted function
-            retval += hal_pin_bit_newf(HAL_IO, &gpio_hal_1[port][pin], comp_id,
-                "%s.gpio.%s-%s-not", comp_name, token, type_str);
-
-            if (retval < 0)
-            {
-                rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] pin %s export failed \n",
-                    comp_name, token);
-                return -1;
-            }
-
-            // configure GPIO pin
-            if ( n )
-            {
-                gpio_out_cnt++;
-                gpio_out_mask[port] |= gpio_mask[pin];
-                gpio_pin_setup_for_output(port, pin);
-            }
-            else
-            {
-                gpio_in_cnt++;
-                gpio_in_mask[port] |= gpio_mask[pin];
-                gpio_pin_setup_for_input(port, pin);
-            }
-        }
-
-    }
-
-    return 0;
-}
-
-
-
-
-static int32_t gpio_pins_malloc(const char *comp_name)
-{
-    uint8_t port;
-    for ( port = GPIO_PORTS_CNT; port--; )
-    {
-        gpio_hal_0[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
-        gpio_hal_1[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
-
-        if ( !gpio_hal_0[port] || !gpio_hal_1[port] )
-        {
-            rtapi_print_msg(RTAPI_MSG_ERR,
-                "%s: [GPIO] port %s hal_malloc() failed \n",
-                comp_name, gpio_name[port]);
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-
-
-
 static void gpio_read(void *arg, long period)
 {
     if ( !gpio_in_cnt ) return;
@@ -378,19 +277,104 @@ static void gpio_write(void *arg, long period)
 
 
 
-static int32_t gpio_func_export(const char *comp_name, int32_t comp_id)
+static int32_t gpio_malloc_and_export(const char *comp_name, int32_t comp_id)
 {
-    if ( 0 > hal_export_functf(gpio_write, 0, 0, 0, comp_id, "%s.gpio.write", comp_name) )
+    int8_t* arg_str[2] = {gpio_in, gpio_out};
+    int8_t n, r;
+    uint8_t port;
+
+
+    // shared memory allocation
+    for ( port = GPIO_PORTS_CNT; port--; )
     {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] %s.gpio.write export failed\n", comp_name);
+        gpio_hal_0[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
+        gpio_hal_1[port] = hal_malloc(GPIO_PINS_CNT * sizeof(hal_bit_t *));
+
+        if ( !gpio_hal_0[port] || !gpio_hal_1[port] )
+        {
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                "%s: [GPIO] port %s hal_malloc() failed \n",
+                comp_name, gpio_name[port]);
+            return -1;
+        }
+    }
+
+
+    // export HAL pins
+    for ( n = 2; n--; )
+    {
+        if ( !arg_str[n] ) continue;
+
+        int8_t *data = arg_str[n], *token;
+        uint8_t pin, found;
+        int32_t retval;
+        int8_t* type_str = n ? "out" : "in";
+
+        while ( (token = strtok(data, ",")) != NULL )
+        {
+            if ( data != NULL ) data = NULL;
+            if ( strlen(token) < 3 ) continue;
+
+            // trying to find a correct port name
+            for ( found = 0, port = GPIO_PORTS_CNT; port--; )
+            {
+                if ( 0 == memcmp(token, gpio_name[port], 2) )
+                {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if ( !found ) continue;
+
+            // trying to find a correct pin number
+            pin = (uint8_t) strtoul(&token[2], NULL, 10);
+
+            if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
+
+            // export pin function
+            retval = hal_pin_bit_newf(HAL_IO, &gpio_hal_0[port][pin], comp_id,
+                "%s.gpio.%s-%s", comp_name, token, type_str);
+
+            // export pin inverted function
+            retval += hal_pin_bit_newf(HAL_IO, &gpio_hal_1[port][pin], comp_id,
+                "%s.gpio.%s-%s-not", comp_name, token, type_str);
+
+            if (retval < 0)
+            {
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] pin %s export failed \n",
+                    comp_name, token);
+                return -1;
+            }
+
+            // configure GPIO pin
+            if ( n )
+            {
+                gpio_out_cnt++;
+                gpio_out_mask[port] |= gpio_mask[pin];
+                gpio_pin_setup_for_output(port, pin);
+            }
+            else
+            {
+                gpio_in_cnt++;
+                gpio_in_mask[port] |= gpio_mask[pin];
+                gpio_pin_setup_for_input(port, pin);
+            }
+        }
+
+    }
+
+
+    // export HAL functions
+    r = 0;
+    r += hal_export_functf(gpio_write, 0, 0, 0, comp_id, "%s.gpio.write", comp_name);
+    r += hal_export_functf(gpio_read, 0, 0, 0, comp_id, "%s.gpio.read", comp_name);
+    if ( r )
+    {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] functions export failed\n", comp_name);
         return -1;
     }
 
-    if ( 0 > hal_export_functf(gpio_read, 0, 0, 0, comp_id, "%s.gpio.read", comp_name) )
-    {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] %s.gpio.read export failed\n", comp_name);
-        return -1;
-    }
 
     return 0;
 }

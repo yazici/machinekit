@@ -34,24 +34,22 @@ static const uint8_t * comp_name = "arisc";
 
 int32_t rtapi_app_main(void)
 {
+    // get component id
     if ( (comp_id = hal_init(comp_name)) < 0 )
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_init() failed\n", comp_name);
         return -1;
     }
 
-#define EXIT { hal_exit(comp_id); return -1; }
+    #define EXIT { hal_exit(comp_id); return -1; }
 
+    // shared memory allocation and export
     cpu_id_get();
-
     if ( msg_mem_init(cpu_id, comp_name) ) EXIT;
-
-    if ( gpio_pins_malloc(comp_name) ) EXIT;
-    if ( gpio_pins_export(comp_name, comp_id) ) EXIT;
-    if ( gpio_func_export(comp_name, comp_id) ) EXIT;
-
+    if ( gpio_malloc_and_export(comp_name, comp_id) ) EXIT;
     if ( stepgen_malloc_and_export(comp_name, comp_id) ) EXIT;
 
+    // driver ready to work
     hal_ready(comp_id);
 
     return 0;
