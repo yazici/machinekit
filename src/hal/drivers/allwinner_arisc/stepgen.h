@@ -23,10 +23,10 @@ typedef struct
 {
     hal_bit_t *enable;
 
-    hal_u32_t *step_space;
-    hal_u32_t *step_len;
-    hal_u32_t *dir_setup;
-    hal_u32_t *dir_hold;
+    hal_u32_t *stepspace;
+    hal_u32_t *steplen;
+    hal_u32_t *dirsetup;
+    hal_u32_t *dirhold;
 
     hal_float_t *pos_scale;
     hal_float_t *maxvel;
@@ -35,9 +35,6 @@ typedef struct
     hal_float_t *vel_cmd;
     hal_float_t *pos_cmd;
 
-    hal_s32_t *rawcounts;
-    hal_s32_t *counts;
-    hal_float_t *freq;
     hal_float_t *pos_fb;
 } stepgen_pin_t;
 
@@ -50,6 +47,9 @@ typedef struct
 
     uint8_t pulsgen_step_ch;
     uint8_t pulsgen_dir_ch;
+
+    uint8_t task;
+    int64_t pos_steps_now;
 
     hal_float_t vel_cmd_old;
     hal_float_t pos_cmd_old;
@@ -81,18 +81,66 @@ static uint8_t stepgen_ch_cnt = 0;
 static void stepgen_capture_pos(void *arg, long period)
 {
     static uint8_t ch;
+    static uint32_t pulses;
+
     for ( ch = stepgen_ch_cnt; ch--; )
     {
-        if ( ! *sg_pin[ch].enable ) continue;
+        if ( ! *sg_pin[ch].enable || !sg_dat[ch].task )
+        {
+            sg_dat[ch].pos_cmd_old = *sg_pin[ch].pos_cmd;
+            sg_dat[ch].vel_cmd_old = *sg_pin[ch].vel_cmd;
+            continue;
+        }
+
+        // fix of small float values
+        if ( (*sg_pin[ch].pos_scale < 1e-20) && (*sg_pin[ch].pos_scale > -1e-20) )
+        {
+            *sg_pin[ch].pos_scale = 1.0;
+        }
+
+        // get pulses done
+        pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch);
+        pulses = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch);
+
+        // TODO
+
+        // task done
+        sg_dat[ch].task = 0;
     }
 }
 
 static void stepgen_update_freq(void *arg, long period)
 {
-    static uint8_t ch;
+    static uint8_t ch, type;
+
     for ( ch = stepgen_ch_cnt; ch--; )
     {
         if ( ! *sg_pin[ch].enable ) continue;
+
+        // if we have a new position task
+        type = 0;
+        if ( *((uint64_t*)sg_pin[ch].pos_cmd) != *((uint64_t*)&sg_dat[ch].pos_cmd_old) )
+        {
+            type = 1;
+        }
+        // if we have a new velocity task
+        else if ( *((uint64_t*)sg_pin[ch].vel_cmd) != *((uint64_t*)&sg_dat[ch].vel_cmd_old) )
+        {
+            type = 2;
+        }
+
+        if ( !type ) continue;
+
+        // we have a task
+        sg_dat[ch].task = 1;
+
+        // fix of small float values
+        if ( (*sg_pin[ch].pos_scale < 1e-20) && (*sg_pin[ch].pos_scale > -1e-20) )
+        {
+            *sg_pin[ch].pos_scale = 1.0;
+        }
+
+        // TODO
     }
 }
 
@@ -152,6 +200,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 sg_dat[stepgen_ch].pulsgen_step_ch = pulsgen_ch;
             }
 
+            sg_dat[stepgen_ch].task = 0;
             sg_dat[stepgen_ch].vel_cmd_old = 0.0;
             sg_dat[stepgen_ch].pos_cmd_old = 0.0;
 
@@ -183,10 +232,10 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     {
         EXPORT(bit,enable,"enable", 0);
 
-        EXPORT(u32,step_space,"stepspace", 1);
-        EXPORT(u32,step_len,"steplen", 1);
-        EXPORT(u32,dir_setup,"dirsetup", 1);
-        EXPORT(u32,dir_hold,"dirhold", 1);
+        EXPORT(u32,stepspace,"stepspace", 1);
+        EXPORT(u32,steplen,"steplen", 1);
+        EXPORT(u32,dirsetup,"dirsetup", 1);
+        EXPORT(u32,dirhold,"dirhold", 1);
 
         EXPORT(float,pos_scale,"position-scale", 1.0);
         EXPORT(float,maxvel,"maxvel", 0.0);
@@ -194,10 +243,6 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 
         EXPORT(float,vel_cmd,"velocity-cmd", 0.0);
         EXPORT(float,pos_cmd,"position-cmd", 0.0);
-
-        EXPORT(s32,rawcounts,"rawcounts", 0);
-        EXPORT(s32,counts,"counts", 0);
-        EXPORT(float,freq,"frequency", 0.0);
         EXPORT(float,pos_fb,"position-fb", 0.0);
     }
     if ( r )
