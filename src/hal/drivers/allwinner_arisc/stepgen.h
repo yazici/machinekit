@@ -196,6 +196,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         {
             if ( data != NULL ) data = NULL;
             if ( stepgen_ch >= STEPGEN_CH_CNT_MAX ) continue;
+            if ( pulsgen_ch >= PULSGEN_CH_CNT ) continue;
             if ( strlen(token) < 3 ) continue;
 
             // trying to find a correct port name
@@ -225,7 +226,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 sg_dat[stepgen_ch].dir_pin = pin;
                 sg_dat[stepgen_ch].dir_inv = inv;
                 sg_dat[stepgen_ch].pulsgen_dir_ch = pulsgen_ch;
-                pulsgen_pin_setup(pulsgen_ch, port, pin, 0);
+                pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
             }
             else // STEP pins
             {
@@ -233,9 +234,9 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 sg_dat[stepgen_ch].step_pin = pin;
                 sg_dat[stepgen_ch].step_inv = inv;
                 sg_dat[stepgen_ch].pulsgen_step_ch0 = pulsgen_ch;
-                pulsgen_pin_setup(pulsgen_ch, port, pin, 0);
+                pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
                 sg_dat[stepgen_ch].pulsgen_step_ch1 = ++pulsgen_ch;
-                pulsgen_pin_setup(pulsgen_ch, port, pin, 0);
+                pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
                 sg_dat[stepgen_ch].task = 0;
                 sg_dat[stepgen_ch].pos_cmd_old = 0.0;
             }
