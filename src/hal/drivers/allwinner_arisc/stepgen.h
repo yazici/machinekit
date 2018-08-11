@@ -10,6 +10,7 @@
 #include "rtapi.h"
 #include "rtapi_app.h"
 #include "hal.h"
+#include <float.h>
 
 #include "gpio.h"
 #include "pulsgen.h"
@@ -51,9 +52,7 @@ typedef struct
 
     uint8_t task;
     uint8_t task_type;
-    uint32_t t0;
-    uint32_t t1;
-    uint32_t d1;
+    int8_t task_dir;
 
     int64_t pos_steps_now;
     int64_t pos_steps_old;
@@ -96,7 +95,7 @@ static uint8_t stepgen_ch_cnt = 0;
 
 static void stepgen_capture_pos(void *arg, long period)
 {
-    static uint8_t ch;
+    static uint8_t ch, pos_changed;
     static uint32_t t0, t1, d0;
 
     // check all used channels
@@ -109,6 +108,8 @@ static void stepgen_capture_pos(void *arg, long period)
             continue;
         }
 
+        pos_changed = 0;
+
         // what kind of task we have?
         switch ( sg_dat[ch].task_type )
         {
@@ -116,20 +117,29 @@ static void stepgen_capture_pos(void *arg, long period)
             {
                 pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
                 t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
-                break;
-            }
-            case TASK_DIR:
-            {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
-                d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
+                if ( !t0 ) break;
+
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    (*sg_pin[ch].pos_scale);
+
+                pos_changed = 1;
                 break;
             }
             case TASK_DIR_STEPS:
             {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
                 pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
                 d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
+                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                if ( !t0 ) break;
+
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                    ((hal_float_t)( d0 ? 1 : -1 )) *
+                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    (*sg_pin[ch].pos_scale);
+
+                pos_changed = 1;
                 break;
             }
             case TASK_STEPS_DIR:
@@ -137,7 +147,13 @@ static void stepgen_capture_pos(void *arg, long period)
                 pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
                 pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
                 t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
-                d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
+                if ( !t0 ) break;
+
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    (*sg_pin[ch].pos_scale);
+
+                pos_changed = 1;
                 break;
             }
             case TASK_STEPS_DIR_STEPS:
@@ -146,11 +162,28 @@ static void stepgen_capture_pos(void *arg, long period)
                 pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
                 pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch1);
                 t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                t1 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch1);
                 d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch1);
+                if ( !t0 && !t1 ) break;
+
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    (*sg_pin[ch].pos_scale);
+
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                    ((hal_float_t)( d0 ? 1 : -1 )) *
+                    ((hal_float_t)(t1/2*sg_dat[ch].task_dir)) *
+                    (*sg_pin[ch].pos_scale);
+
+                pos_changed = 1;
                 break;
             }
         }
+
+        if ( !pos_changed ) *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd;
+
+        // save current position
+        sg_dat[ch].pos_cmd_old = *sg_pin[ch].pos_cmd;
 
         // task done
         sg_dat[ch].task = 0;
@@ -168,6 +201,7 @@ static void stepgen_update_freq(void *arg, long period)
 
         // we have a task
         sg_dat[ch].task = 1;
+        sg_dat[ch].task_dir = (*sg_pin[ch].pos_cmd > sg_dat[ch].pos_cmd_old) ? 1 : -1;
 
         // TODO
     }
