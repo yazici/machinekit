@@ -270,8 +270,6 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
                 sg_dat[stepgen_ch].step_pulsgen_ch1 = ++pulsgen_ch;
                 pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
-                sg_dat[stepgen_ch].task = 0;
-                sg_dat[stepgen_ch].pos_cmd_old = 0.0;
             }
 
             stepgen_ch++;
