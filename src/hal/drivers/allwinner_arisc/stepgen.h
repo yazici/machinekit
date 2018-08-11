@@ -48,6 +48,7 @@ typedef struct
     int8_t step_task_dir1;
     uint32_t step_task_toggles0;
     uint32_t step_task_toggles1;
+    uint32_t step_freq;
 
     uint8_t dir_port;
     uint8_t dir_pin;
@@ -105,6 +106,7 @@ static void stepgen_capture_pos(void *arg, long period)
         if ( ! *sg_pin[ch].enable || !sg_dat[ch].task )
         {
             sg_dat[ch].pos_cmd_old = *sg_pin[ch].pos_cmd;
+            if ( sg_dat[ch].step_freq ) sg_dat[ch].step_freq = 0;
             continue;
         }
 
