@@ -19,6 +19,7 @@
 
 
 #define STEPGEN_CH_CNT_MAX 10
+#define DBL_ABS(DBL) (*((hal_float_t*)&(INT64_MAX & *((uint64_t*)&(DBL)))))
 
 typedef struct
 {
@@ -49,6 +50,7 @@ typedef struct
     uint32_t step_task_toggles0;
     uint32_t step_task_toggles1;
     uint32_t step_freq;
+    uint32_t step_freq_old;
 
     uint8_t dir_port;
     uint8_t dir_pin;
@@ -105,8 +107,8 @@ static void stepgen_capture_pos(void *arg, long period)
         // keep saving current position if channel is disabled or idle
         if ( ! *sg_pin[ch].enable || !sg_dat[ch].task )
         {
+            sg_dat[ch].step_freq = 0;
             sg_dat[ch].pos_cmd_old = *sg_pin[ch].pos_cmd;
-            if ( sg_dat[ch].step_freq ) sg_dat[ch].step_freq = 0;
             continue;
         }
 
@@ -203,6 +205,9 @@ static void stepgen_update_freq(void *arg, long period)
 
         // we have a task
         sg_dat[ch].task = 1;
+        sg_dat[ch].step_freq_old = sg_dat[ch].step_freq;
+        sg_dat[ch].step_freq = (uint32_t) ( *sg_pin[ch].pos_scale *
+            DBL_ABS(sg_dat[ch].pos_cmd_old - *sg_pin[ch].pos_cmd) );
 
         // TODO
     }
