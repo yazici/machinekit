@@ -18,7 +18,7 @@
 
 
 
-#define STEPGEN_CH_CNT_MAX 16
+#define STEPGEN_CH_CNT_MAX 10
 
 typedef struct
 {
