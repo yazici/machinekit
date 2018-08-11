@@ -42,20 +42,20 @@ typedef struct
     uint8_t step_port;
     uint8_t step_pin;
     uint8_t step_inv;
+    uint8_t step_pulsgen_ch0;
+    uint8_t step_pulsgen_ch1;
+    int8_t step_task_dir0;
+    int8_t step_task_dir1;
+    uint32_t step_task_toggles0;
+    uint32_t step_task_toggles1;
+
     uint8_t dir_port;
     uint8_t dir_pin;
     uint8_t dir_inv;
-
-    uint8_t pulsgen_step_ch0;
-    uint8_t pulsgen_step_ch1;
-    uint8_t pulsgen_dir_ch;
+    uint8_t dir_pulsgen_ch;
 
     uint8_t task;
     uint8_t task_type;
-    int8_t task_dir;
-
-    int64_t pos_steps_now;
-    int64_t pos_steps_old;
 
     hal_float_t pos_cmd_old;
 } stepgen_data_t;
@@ -115,12 +115,12 @@ static void stepgen_capture_pos(void *arg, long period)
         {
             case TASK_STEPS:
             {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                pulsgen_task_abort(sg_dat[ch].step_pulsgen_ch0);
+                t0 = pulsgen_task_toggles(sg_dat[ch].step_pulsgen_ch0);
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    ((hal_float_t)(t0/2 * sg_dat[ch].step_task_toggles0)) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -128,15 +128,15 @@ static void stepgen_capture_pos(void *arg, long period)
             }
             case TASK_DIR_STEPS:
             {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
-                d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                pulsgen_task_abort(sg_dat[ch].dir_pulsgen_ch);
+                pulsgen_task_abort(sg_dat[ch].step_pulsgen_ch0);
+                d0 = pulsgen_task_toggles(sg_dat[ch].dir_pulsgen_ch);
+                t0 = pulsgen_task_toggles(sg_dat[ch].step_pulsgen_ch0);
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
                     ((hal_float_t)( d0 ? 1 : -1 )) *
-                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    ((hal_float_t)(t0/2 * sg_dat[ch].step_task_toggles0)) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -144,13 +144,13 @@ static void stepgen_capture_pos(void *arg, long period)
             }
             case TASK_STEPS_DIR:
             {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
-                pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
+                pulsgen_task_abort(sg_dat[ch].step_pulsgen_ch0);
+                pulsgen_task_abort(sg_dat[ch].dir_pulsgen_ch);
+                t0 = pulsgen_task_toggles(sg_dat[ch].step_pulsgen_ch0);
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    ((hal_float_t)(t0/2 * sg_dat[ch].step_task_toggles0)) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -158,21 +158,21 @@ static void stepgen_capture_pos(void *arg, long period)
             }
             case TASK_STEPS_DIR_STEPS:
             {
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch0);
-                pulsgen_task_abort(sg_dat[ch].pulsgen_dir_ch);
-                pulsgen_task_abort(sg_dat[ch].pulsgen_step_ch1);
-                t0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch0);
-                t1 = pulsgen_task_toggles(sg_dat[ch].pulsgen_step_ch1);
-                d0 = pulsgen_task_toggles(sg_dat[ch].pulsgen_dir_ch);
+                pulsgen_task_abort(sg_dat[ch].step_pulsgen_ch0);
+                pulsgen_task_abort(sg_dat[ch].dir_pulsgen_ch);
+                pulsgen_task_abort(sg_dat[ch].step_pulsgen_ch1);
+                t0 = pulsgen_task_toggles(sg_dat[ch].step_pulsgen_ch0);
+                t1 = pulsgen_task_toggles(sg_dat[ch].step_pulsgen_ch1);
+                d0 = pulsgen_task_toggles(sg_dat[ch].dir_pulsgen_ch);
                 if ( !t0 && !t1 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2*sg_dat[ch].task_dir)) *
+                    ((hal_float_t)(t0/2 * sg_dat[ch].step_task_toggles0)) *
                     (*sg_pin[ch].pos_scale);
 
-                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                *sg_pin[ch].pos_fb +=
                     ((hal_float_t)( d0 ? 1 : -1 )) *
-                    ((hal_float_t)(t1/2*sg_dat[ch].task_dir)) *
+                    ((hal_float_t)(t1/2 * sg_dat[ch].step_task_toggles1)) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -201,7 +201,6 @@ static void stepgen_update_freq(void *arg, long period)
 
         // we have a task
         sg_dat[ch].task = 1;
-        sg_dat[ch].task_dir = (*sg_pin[ch].pos_cmd > sg_dat[ch].pos_cmd_old) ? 1 : -1;
 
         // TODO
     }
@@ -259,7 +258,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 sg_dat[stepgen_ch].dir_port = port;
                 sg_dat[stepgen_ch].dir_pin = pin;
                 sg_dat[stepgen_ch].dir_inv = inv;
-                sg_dat[stepgen_ch].pulsgen_dir_ch = pulsgen_ch;
+                sg_dat[stepgen_ch].dir_pulsgen_ch = pulsgen_ch;
                 pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
             }
             else // STEP pins
@@ -267,9 +266,9 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
                 sg_dat[stepgen_ch].step_port = port;
                 sg_dat[stepgen_ch].step_pin = pin;
                 sg_dat[stepgen_ch].step_inv = inv;
-                sg_dat[stepgen_ch].pulsgen_step_ch0 = pulsgen_ch;
+                sg_dat[stepgen_ch].step_pulsgen_ch0 = pulsgen_ch;
                 pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
-                sg_dat[stepgen_ch].pulsgen_step_ch1 = ++pulsgen_ch;
+                sg_dat[stepgen_ch].step_pulsgen_ch1 = ++pulsgen_ch;
                 pulsgen_pin_setup(pulsgen_ch, port, pin, inv);
                 sg_dat[stepgen_ch].task = 0;
                 sg_dat[stepgen_ch].pos_cmd_old = 0.0;
