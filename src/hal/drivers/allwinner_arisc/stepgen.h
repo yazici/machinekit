@@ -188,7 +188,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     {
         if ( !arg_str[n] ) continue;
 
-        int8_t *data = arg_str[n], *token;
+        int8_t *data = arg_str[n], *token, **inv_flag;
         uint8_t port, pin, inv = 0, stepgen_ch = 0, found;
         int32_t retval;
 
@@ -211,9 +211,12 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
             if ( !found ) continue;
 
             // trying to find a correct pin number
-            pin = (uint8_t) strtoul(&token[2], NULL, 10);
+            pin = (uint8_t) strtoul(&token[2], inv_flag, 10);
 
             if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
+
+            // trying to find pin's invert flag
+            if ( **inv_flag == '!' ) inv = 1;
 
             // save pin data
             if ( n ) // DIR pins
