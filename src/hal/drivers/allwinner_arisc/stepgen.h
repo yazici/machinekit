@@ -50,8 +50,8 @@ typedef struct
     hal_s32_t *step_task_dir1;
     hal_u32_t *step_task_toggles0;
     hal_u32_t *step_task_toggles1;
-    hal_u32_t *step_freq;
-    hal_u32_t *step_freq_old;
+    hal_u64_t *step_freq;
+    hal_u64_t *step_freq_old;
 
     hal_u32_t *dir_port;
     hal_u32_t *dir_pin;
@@ -119,7 +119,7 @@ static void stepgen_capture_pos(void *arg, long period)
     for ( ch = stepgen_ch_cnt; ch--; )
     {
         // keep saving some data if channel is disabled or idle
-        if ( ! *sg_pin[ch].enable || !*sg_pin[ch].task )
+        if ( ! *sg_pin[ch].enable || ! *sg_pin[ch].task )
         {
             *sg_pin[ch].step_freq = 0;
             *sg_pin[ch].pos_cmd_old = *sg_pin[ch].pos_cmd;
@@ -138,7 +138,7 @@ static void stepgen_capture_pos(void *arg, long period)
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_toggles0))) *
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -154,7 +154,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
                     ((hal_float_t)( d0 ? 1 : -1 )) *
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_toggles0))) *
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -168,7 +168,7 @@ static void stepgen_capture_pos(void *arg, long period)
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_toggles0))) *
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -185,12 +185,12 @@ static void stepgen_capture_pos(void *arg, long period)
                 if ( !t0 && !t1 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_toggles0))) *
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
                 *sg_pin[ch].pos_fb +=
                     ((hal_float_t)( d0 ? 1 : -1 )) *
-                    ((hal_float_t)(t1/2 * (*sg_pin[ch].step_task_toggles1))) *
+                    ((hal_float_t)(t1/2 * (*sg_pin[ch].step_task_dir1))) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -211,13 +211,13 @@ static void stepgen_capture_pos(void *arg, long period)
 static void stepgen_update_freq(void *arg, long period)
 {
     static uint8_t ch;
-    static uint32_t step_accel_max, step_accel_task, step_freq_max;
+    static hal_u64_t step_accel_max, step_accel_task, step_freq_max;
     static hal_float_t pos_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
     {
         if ( !*sg_pin[ch].enable ) continue;
-        if ( *((uint64_t*)sg_pin[ch].pos_cmd) == *((uint64_t*)&*sg_pin[ch].pos_cmd_old) ) continue;
+        if ( *((uint64_t*)sg_pin[ch].pos_cmd) == *((uint64_t*)sg_pin[ch].pos_cmd_old) ) continue;
 
         // we have a task
         *sg_pin[ch].task = 1;
@@ -227,12 +227,14 @@ static void stepgen_update_freq(void *arg, long period)
 
         // get task steps frequency
         *sg_pin[ch].step_freq_old = *sg_pin[ch].step_freq;
-        *sg_pin[ch].step_freq = (uint32_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task));
-        step_freq_max = (uint32_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].vel_max));
+        *sg_pin[ch].step_freq = ((hal_u64_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task))) *
+            1000000000 /
+            (period ? period : 1000000);
+        step_freq_max = (hal_u64_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].vel_max));
         if ( *sg_pin[ch].step_freq > step_freq_max ) *sg_pin[ch].step_freq = step_freq_max;
 
         // get task steps acceleration
-        step_accel_max = (uint32_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].accel_max));
+        step_accel_max = (hal_u64_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].accel_max));
         step_accel_task = *sg_pin[ch].step_freq_old > *sg_pin[ch].step_freq ?
             *sg_pin[ch].step_freq_old - *sg_pin[ch].step_freq :
             *sg_pin[ch].step_freq - *sg_pin[ch].step_freq_old;
@@ -356,8 +358,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(s32,step_task_dir1,"step_task_dir1", 0);
         EXPORT(u32,step_task_toggles0,"step_task_toggles0", 0);
         EXPORT(u32,step_task_toggles1,"step_task_toggles1", 0);
-        EXPORT(u32,step_freq,"step_freq", 0);
-        EXPORT(u32,step_freq_old,"step_freq_old", 0);
+        EXPORT(u64,step_freq,"step_freq", 0);
+        EXPORT(u64,step_freq_old,"step_freq_old", 0);
         EXPORT(u32,dir_port,"dir_port", sg_dat[ch].dir_port);
         EXPORT(u32,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
         EXPORT(u32,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
