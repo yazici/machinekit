@@ -118,6 +118,7 @@ static uint8_t stepgen_ch_cnt = 0;
 static void stepgen_capture_pos(void *arg, long period)
 {
     static uint8_t ch, pos_changed;
+    static hal_bit_t dir_state;
     static uint32_t t0, t1, d0;
 
     // check all used channels
@@ -133,43 +134,142 @@ static void stepgen_capture_pos(void *arg, long period)
 
         pos_changed = 0;
 
-        // what kind of task we have?
+        // what kind of task it was?
         switch ( *sg_pin[ch].task_type )
         {
             case TASK_STEPS:
             {
+                // abort last pulsgen tasks and get pin toggles count
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
                 t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
+
+                // update pin states
+                *sg_pin[ch].step_state = t0 && (t0 % 2) ? 1 : 0;
+
+                // if needs make a half step to complete the task
+                if ( *sg_pin[ch].step_state )
+                {
+                    if ( *sg_pin[ch].step_inv ) {
+                        gpio_pin_set(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    }
+
+                    t0++;
+                    *sg_pin[ch].step_state = 0;
+                }
+
+                // position is same
                 if ( !t0 ) break;
 
+                // update HAL feedback pin
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
                     ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
+                // position was changed
                 pos_changed = 1;
                 break;
             }
+
+            case TASK_DIR:
+            {
+                pulsgen_task_abort(*sg_pin[ch].dir_pulsgen_ch);
+                d0 = pulsgen_task_toggles(*sg_pin[ch].dir_pulsgen_ch);
+
+                dir_state = d0 && (d0 % 2) ? 1 : *sg_pin[ch].dir_state;
+
+                if ( dir_state == *sg_pin[ch].dir_state )
+                {
+                    if ( *sg_pin[ch].dir_inv ^ dir_state ) {
+                        gpio_pin_set(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    }
+                }
+
+                *sg_pin[ch].dir_state = *sg_pin[ch].dir_state ? 0 : 1;
+
+                break;
+            }
+
             case TASK_DIR_STEPS:
             {
                 pulsgen_task_abort(*sg_pin[ch].dir_pulsgen_ch);
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
                 d0 = pulsgen_task_toggles(*sg_pin[ch].dir_pulsgen_ch);
                 t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
+
+                dir_state = d0 && (d0 % 2) ? 1 : *sg_pin[ch].dir_state;
+
+                if ( dir_state == *sg_pin[ch].dir_state )
+                {
+                    if ( *sg_pin[ch].dir_inv ^ dir_state ) {
+                        gpio_pin_set(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    }
+                }
+
+                *sg_pin[ch].dir_state = *sg_pin[ch].dir_state ? 0 : 1;
+                *sg_pin[ch].step_state = t0 && (t0 % 2) ? 1 : 0;
+
+                if ( *sg_pin[ch].step_state )
+                {
+                    if ( *sg_pin[ch].step_inv ) {
+                        gpio_pin_set(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    }
+
+                    t0++;
+                    *sg_pin[ch].step_state = 0;
+                }
+
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)( d0 ? 1 : -1 )) *
+                    (dir_state ? -1.0 : 1.0) *
                     ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
                 break;
             }
+
             case TASK_STEPS_DIR:
             {
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
                 pulsgen_task_abort(*sg_pin[ch].dir_pulsgen_ch);
+                d0 = pulsgen_task_toggles(*sg_pin[ch].dir_pulsgen_ch);
                 t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
+
+                dir_state = d0 && (d0 % 2) ? 1 : *sg_pin[ch].dir_state;
+
+                if ( dir_state == *sg_pin[ch].dir_state )
+                {
+                    if ( *sg_pin[ch].dir_inv ^ dir_state ) {
+                        gpio_pin_set(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    }
+                }
+
+                *sg_pin[ch].dir_state = *sg_pin[ch].dir_state ? 0 : 1;
+                *sg_pin[ch].step_state = t0 && (t0 % 2) ? 1 : 0;
+
+                if ( *sg_pin[ch].step_state )
+                {
+                    if ( *sg_pin[ch].step_inv ) {
+                        gpio_pin_set(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    }
+
+                    t0++;
+                    *sg_pin[ch].step_state = 0;
+                }
+
                 if ( !t0 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
@@ -179,14 +279,42 @@ static void stepgen_capture_pos(void *arg, long period)
                 pos_changed = 1;
                 break;
             }
+
             case TASK_STEPS_DIR_STEPS:
             {
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
                 pulsgen_task_abort(*sg_pin[ch].dir_pulsgen_ch);
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch1);
                 t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
-                t1 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch1);
                 d0 = pulsgen_task_toggles(*sg_pin[ch].dir_pulsgen_ch);
+                t1 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch1);
+
+                dir_state = d0 && (d0 % 2) ? 1 : *sg_pin[ch].dir_state;
+
+                if ( dir_state == *sg_pin[ch].dir_state )
+                {
+                    if ( *sg_pin[ch].dir_inv ^ dir_state ) {
+                        gpio_pin_set(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].dir_port, *sg_pin[ch].dir_pin);
+                    }
+                }
+
+                *sg_pin[ch].dir_state = *sg_pin[ch].dir_state ? 0 : 1;
+                *sg_pin[ch].step_state = (t0+t1) && ((t0+t1) % 2) ? 1 : 0;
+
+                if ( *sg_pin[ch].step_state )
+                {
+                    if ( *sg_pin[ch].step_inv ) {
+                        gpio_pin_set(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    } else {
+                        gpio_pin_clear(*sg_pin[ch].step_port, *sg_pin[ch].step_pin);
+                    }
+
+                    t1++;
+                    *sg_pin[ch].step_state = 0;
+                }
+
                 if ( !t0 && !t1 ) break;
 
                 *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
@@ -194,7 +322,7 @@ static void stepgen_capture_pos(void *arg, long period)
                     (*sg_pin[ch].pos_scale);
 
                 *sg_pin[ch].pos_fb +=
-                    ((hal_float_t)( d0 ? 1 : -1 )) *
+                    (dir_state ? -1.0 : 1.0) *
                     ((hal_float_t)(t1/2 * (*sg_pin[ch].step_task_dir1))) *
                     (*sg_pin[ch].pos_scale);
 
@@ -215,7 +343,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
 static void stepgen_update_freq(void *arg, long period)
 {
-    static uint8_t ch, dir_state_new;
+    static uint8_t ch, dir_state_new, dir_change;
     static hal_float_t pos_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
@@ -230,8 +358,9 @@ static void stepgen_update_freq(void *arg, long period)
         pos_task = *sg_pin[ch].pos_cmd - *sg_pin[ch].pos_cmd_old;
 
         // get task direction
-        if ( *sg_pin[ch].dir_state ) dir_state_new = pos_task > 0.0 ? 1 : 0;
-        else                         dir_state_new = pos_task > 0.0 ? 0 : 1;
+        if ( *sg_pin[ch].dir_state ) { dir_state_new = pos_task > 0.0 ? 1 : 0; }
+        else                         { dir_state_new = pos_task > 0.0 ? 0 : 1; }
+        dir_change = dir_state_new != *sg_pin[ch].dir_state ? 1 : 0;
 
         // get task steps frequency
         *sg_pin[ch].step_freq_old = *sg_pin[ch].step_freq;
