@@ -44,6 +44,7 @@ typedef struct
     hal_u32_t *step_port;
     hal_u32_t *step_pin;
     hal_bit_t *step_inv;
+    hal_bit_t *step_state;
     hal_u32_t *step_pulsgen_ch0;
     hal_u32_t *step_pulsgen_ch1;
     hal_s32_t *step_task_dir0;
@@ -59,6 +60,7 @@ typedef struct
     hal_u32_t *dir_port;
     hal_u32_t *dir_pin;
     hal_bit_t *dir_inv;
+    hal_bit_t *dir_state;
     hal_u32_t *dir_pulsgen_ch;
 
     hal_bit_t *task;
@@ -213,7 +215,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
 static void stepgen_update_freq(void *arg, long period)
 {
-    static uint8_t ch;
+    static uint8_t ch, dir_state_new;
     static hal_float_t pos_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
@@ -226,6 +228,10 @@ static void stepgen_update_freq(void *arg, long period)
 
         // get task move size
         pos_task = *sg_pin[ch].pos_cmd - *sg_pin[ch].pos_cmd_old;
+
+        // get task direction
+        if ( *sg_pin[ch].dir_state ) dir_state_new = pos_task > 0.0 ? 1 : 0;
+        else                         dir_state_new = pos_task > 0.0 ? 0 : 1;
 
         // get task steps frequency
         *sg_pin[ch].step_freq_old = *sg_pin[ch].step_freq;
@@ -359,6 +365,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(u32,step_port,"step_port", sg_dat[ch].step_port);
         EXPORT(u32,step_pin,"step_pin", sg_dat[ch].step_pin);
         EXPORT(bit,step_inv,"step_inv", sg_dat[ch].step_inv);
+        EXPORT(bit,step_state,"step_state", 0);
         EXPORT(u32,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
         EXPORT(u32,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
         EXPORT(s32,step_task_dir0,"step_task_dir0", 0);
@@ -373,6 +380,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(u32,dir_port,"dir_port", sg_dat[ch].dir_port);
         EXPORT(u32,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
         EXPORT(bit,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
+        EXPORT(bit,dir_state,"dir_state", 0);
         EXPORT(u32,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
         EXPORT(bit,task,"task", 0);
         EXPORT(u32,task_type,"task_type", 0);
