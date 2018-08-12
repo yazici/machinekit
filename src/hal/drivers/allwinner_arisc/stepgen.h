@@ -343,47 +343,72 @@ static void stepgen_capture_pos(void *arg, long period)
 
 static void stepgen_update_freq(void *arg, long period)
 {
-    static uint8_t ch, dir_state_new, dir_change;
+    static hal_u8_t ch;
+    static hal_bit_t move_forward, dir_change;
     static hal_float_t pos_task;
+    static hal_s32_t step_task;
+
+#define sp sg_pin[ch]
+#define s *sg_pin[ch]
+#define u64v(PDBL) *((hal_u64_t*)PDBL)
 
     for ( ch = stepgen_ch_cnt; ch--; )
     {
-        if ( !*sg_pin[ch].enable ) continue;
-        if ( *((uint64_t*)sg_pin[ch].pos_cmd) == *((uint64_t*)sg_pin[ch].pos_cmd_old) ) continue;
+        // goto next channel if current is off or idle
+        if ( !s.enable ) continue;
+        if ( u64v(sp.pos_cmd) == u64v(sp.pos_cmd_old) ) continue;
+
+        // get task data
+        pos_task = s.pos_cmd - s.pos_cmd_old;
+        step_task = (hal_s32_t) (s.pos_scale * rtapi_fabs(pos_task));
+        move_forward = pos_task > 0.0 ? 1 : 0;
+        dir_change = s.dir_state == move_forward ? 1 : 0;
+
+        // goto next channel if nothing to do here
+        if ( step_task == 0 && !dir_change ) continue;
 
         // we have a task
-        *sg_pin[ch].task = 1;
+        s.task = 1;
 
-        // get task move size
-        pos_task = *sg_pin[ch].pos_cmd - *sg_pin[ch].pos_cmd_old;
+        // get frequency and acceleration limits
+        s.step_freq_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.vel_max));
+        s.step_accel_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.accel_max));
 
-        // get task direction
-        if ( *sg_pin[ch].dir_state ) { dir_state_new = pos_task > 0.0 ? 1 : 0; }
-        else                         { dir_state_new = pos_task > 0.0 ? 0 : 1; }
-        dir_change = dir_state_new != *sg_pin[ch].dir_state ? 1 : 0;
+        // get current steps frequency
+        s.step_freq_old = s.step_freq;
+        s.step_freq = step_task * 1000000000 / period;
+        if ( s.step_freq > s.step_freq_max )
+        {
+            step_task = step_task * s.step_freq_max / s.step_freq;
+            s.step_freq = step_task * 1000000000 / period;
+        }
 
-        // get task steps frequency
-        *sg_pin[ch].step_freq_old = *sg_pin[ch].step_freq;
-        *sg_pin[ch].step_freq =
-            ((hal_u64_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task))) *
-            1000000000 /
-            (period ? period : 1000000);
-        *sg_pin[ch].step_freq_max = (hal_u64_t)
-            rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].vel_max));
-        if ( *sg_pin[ch].step_freq > *sg_pin[ch].step_freq_max )
-            { *sg_pin[ch].step_freq = *sg_pin[ch].step_freq_max; }
+        // get current steps acceleration
+        s.step_accel = s.step_freq_old > s.step_freq ?
+            s.step_freq_old - s.step_freq :
+            s.step_freq - s.step_freq_old ;
+        if ( s.step_accel > s.step_accel_max )
+        {
+            step_task = step_task * s.step_accel_max / s.step_accel;
+            s.step_freq = step_task * 1000000000 / period;
+        }
 
-        // get task steps acceleration
-        *sg_pin[ch].step_accel_max = (hal_u64_t)
-            rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].accel_max));
-        *sg_pin[ch].step_accel = *sg_pin[ch].step_freq_old > *sg_pin[ch].step_freq ?
-            *sg_pin[ch].step_freq_old - *sg_pin[ch].step_freq :
-            *sg_pin[ch].step_freq - *sg_pin[ch].step_freq_old;
-        if ( *sg_pin[ch].step_accel > *sg_pin[ch].step_accel_max )
-            { *sg_pin[ch].step_accel = *sg_pin[ch].step_accel_max; }
+        // set task type
+        if ( dir_change ) // with DIR change
+        {
+            // TODO
+        }
+        else // just a few steps
+        {
+            s.task_type = TASK_STEPS;
 
-        // TODO
+            // TODO
+        }
     }
+
+#undef s
+#undef sl
+#undef u64v
 }
 
 
