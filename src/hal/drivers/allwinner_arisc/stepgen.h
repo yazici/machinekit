@@ -43,7 +43,7 @@ typedef struct
 
     hal_u32_t *step_port;
     hal_u32_t *step_pin;
-    hal_u32_t *step_inv;
+    hal_bit_t *step_inv;
     hal_u32_t *step_pulsgen_ch0;
     hal_u32_t *step_pulsgen_ch1;
     hal_s32_t *step_task_dir0;
@@ -52,13 +52,16 @@ typedef struct
     hal_u32_t *step_task_toggles1;
     hal_u64_t *step_freq;
     hal_u64_t *step_freq_old;
+    hal_u64_t *step_freq_max;
+    hal_u64_t *step_accel;
+    hal_u64_t *step_accel_max;
 
     hal_u32_t *dir_port;
     hal_u32_t *dir_pin;
-    hal_u32_t *dir_inv;
+    hal_bit_t *dir_inv;
     hal_u32_t *dir_pulsgen_ch;
 
-    hal_u32_t *task;
+    hal_bit_t *task;
     hal_u32_t *task_type;
 
     hal_float_t *pos_cmd_old;
@@ -66,16 +69,16 @@ typedef struct
 
 typedef struct
 {
-    uint8_t step_port;
-    uint8_t step_pin;
-    uint8_t step_inv;
-    uint8_t step_pulsgen_ch0;
-    uint8_t step_pulsgen_ch1;
+    hal_u8_t step_port;
+    hal_u8_t step_pin;
+    hal_bit_t step_inv;
+    hal_u8_t step_pulsgen_ch0;
+    hal_u8_t step_pulsgen_ch1;
 
-    uint8_t dir_port;
-    uint8_t dir_pin;
-    uint8_t dir_inv;
-    uint8_t dir_pulsgen_ch;
+    hal_u8_t dir_port;
+    hal_u8_t dir_pin;
+    hal_bit_t dir_inv;
+    hal_u8_t dir_pulsgen_ch;
 } stepgen_data_t;
 
 enum
@@ -211,7 +214,6 @@ static void stepgen_capture_pos(void *arg, long period)
 static void stepgen_update_freq(void *arg, long period)
 {
     static uint8_t ch;
-    static hal_u64_t step_accel_max, step_accel_task, step_freq_max;
     static hal_float_t pos_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
@@ -227,18 +229,23 @@ static void stepgen_update_freq(void *arg, long period)
 
         // get task steps frequency
         *sg_pin[ch].step_freq_old = *sg_pin[ch].step_freq;
-        *sg_pin[ch].step_freq = ((hal_u64_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task))) *
+        *sg_pin[ch].step_freq =
+            ((hal_u64_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task))) *
             1000000000 /
             (period ? period : 1000000);
-        step_freq_max = (hal_u64_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].vel_max));
-        if ( *sg_pin[ch].step_freq > step_freq_max ) *sg_pin[ch].step_freq = step_freq_max;
+        *sg_pin[ch].step_freq_max = (hal_u64_t)
+            rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].vel_max));
+        if ( *sg_pin[ch].step_freq > *sg_pin[ch].step_freq_max )
+            { *sg_pin[ch].step_freq = *sg_pin[ch].step_freq_max; }
 
         // get task steps acceleration
-        step_accel_max = (hal_u64_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].accel_max));
-        step_accel_task = *sg_pin[ch].step_freq_old > *sg_pin[ch].step_freq ?
+        *sg_pin[ch].step_accel_max = (hal_u64_t)
+            rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].accel_max));
+        *sg_pin[ch].step_accel = *sg_pin[ch].step_freq_old > *sg_pin[ch].step_freq ?
             *sg_pin[ch].step_freq_old - *sg_pin[ch].step_freq :
             *sg_pin[ch].step_freq - *sg_pin[ch].step_freq_old;
-        if ( step_accel_task > step_accel_max ) step_accel_task = step_accel_max;
+        if ( *sg_pin[ch].step_accel > *sg_pin[ch].step_accel_max )
+            { *sg_pin[ch].step_accel = *sg_pin[ch].step_accel_max; }
 
         // TODO
     }
@@ -351,7 +358,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 
         EXPORT(u32,step_port,"step_port", sg_dat[ch].step_port);
         EXPORT(u32,step_pin,"step_pin", sg_dat[ch].step_pin);
-        EXPORT(u32,step_inv,"step_inv", sg_dat[ch].step_inv);
+        EXPORT(bit,step_inv,"step_inv", sg_dat[ch].step_inv);
         EXPORT(u32,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
         EXPORT(u32,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
         EXPORT(s32,step_task_dir0,"step_task_dir0", 0);
@@ -360,11 +367,14 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(u32,step_task_toggles1,"step_task_toggles1", 0);
         EXPORT(u64,step_freq,"step_freq", 0);
         EXPORT(u64,step_freq_old,"step_freq_old", 0);
+        EXPORT(u64,step_freq_max,"step_freq_max", 0);
+        EXPORT(u64,step_accel,"step_accel", 0);
+        EXPORT(u64,step_accel_max,"step_accel_max", 0);
         EXPORT(u32,dir_port,"dir_port", sg_dat[ch].dir_port);
         EXPORT(u32,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
-        EXPORT(u32,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
+        EXPORT(bit,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
         EXPORT(u32,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
-        EXPORT(u32,task,"task", 0);
+        EXPORT(bit,task,"task", 0);
         EXPORT(u32,task_type,"task_type", 0);
         EXPORT(float,pos_cmd_old,"pos_cmd_old", 0.0);
     }
