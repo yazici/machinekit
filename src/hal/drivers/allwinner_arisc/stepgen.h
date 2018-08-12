@@ -222,7 +222,7 @@ static void stepgen_update_freq(void *arg, long period)
         // we have a task
         *sg_pin[ch].task = 1;
 
-        // get task work
+        // get task move size
         pos_task = *sg_pin[ch].pos_cmd - *sg_pin[ch].pos_cmd_old;
 
         // get task steps frequency
@@ -339,15 +339,15 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     for ( r = 0, ch = stepgen_ch_cnt; ch--; )
     {
         EXPORT(bit,enable,"enable", 0);
-        EXPORT(u32,step_space,"stepspace", 1);
-        EXPORT(u32,step_len,"steplen", 1);
-        EXPORT(u32,dir_setup,"dirsetup", 1);
-        EXPORT(u32,dir_hold,"dirhold", 1);
-        EXPORT(float,pos_scale,"position-scale", 1.0);
-        EXPORT(float,vel_max,"maxvel", 0.0);
-        EXPORT(float,accel_max,"maxaccel", 0.0);
-        EXPORT(float,pos_cmd,"position-cmd", 0.0);
-        EXPORT(float,pos_fb,"position-fb", 0.0);
+        EXPORT(u32,step_space,"step_space", 1);
+        EXPORT(u32,step_len,"step_len", 1);
+        EXPORT(u32,dir_setup,"dir_setup", 1);
+        EXPORT(u32,dir_hold,"dir_hold", 1);
+        EXPORT(float,pos_scale,"pos_scale", 1.0);
+        EXPORT(float,vel_max,"vel_max", 0.0);
+        EXPORT(float,accel_max,"accel_max", 0.0);
+        EXPORT(float,pos_cmd,"pos_cmd", 0.0);
+        EXPORT(float,pos_fb,"pos_fb", 0.0);
 
         EXPORT(u32,step_port,"step_port", sg_dat[ch].step_port);
         EXPORT(u32,step_pin,"step_pin", sg_dat[ch].step_pin);
