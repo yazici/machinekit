@@ -11,6 +11,7 @@
 #include "rtapi_app.h"
 #include "hal.h"
 #include <float.h>
+#include "rtapi_math.h"
 
 #include "gpio.h"
 #include "pulsgen.h"
@@ -19,7 +20,6 @@
 
 
 #define STEPGEN_CH_CNT_MAX 10
-#define DBL_ABS(DBL) (*((hal_float_t*)&(INT64_MAX & *((uint64_t*)&(DBL)))))
 
 typedef struct
 {
@@ -104,7 +104,7 @@ static void stepgen_capture_pos(void *arg, long period)
     // check all used channels
     for ( ch = stepgen_ch_cnt; ch--; )
     {
-        // keep saving current position if channel is disabled or idle
+        // keep saving some data if channel is disabled or idle
         if ( ! *sg_pin[ch].enable || !sg_dat[ch].task )
         {
             sg_dat[ch].step_freq = 0;
@@ -197,6 +197,8 @@ static void stepgen_capture_pos(void *arg, long period)
 static void stepgen_update_freq(void *arg, long period)
 {
     static uint8_t ch;
+    static uint32_t step_accel_max, step_accel_task, step_freq_max;
+    static hal_float_t pos_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
     {
@@ -205,9 +207,22 @@ static void stepgen_update_freq(void *arg, long period)
 
         // we have a task
         sg_dat[ch].task = 1;
+
+        // get task work
+        pos_task = *sg_pin[ch].pos_cmd - sg_dat[ch].pos_cmd_old;
+
+        // get task steps frequency
         sg_dat[ch].step_freq_old = sg_dat[ch].step_freq;
-        sg_dat[ch].step_freq = (uint32_t) ( *sg_pin[ch].pos_scale *
-            DBL_ABS(sg_dat[ch].pos_cmd_old - *sg_pin[ch].pos_cmd) );
+        sg_dat[ch].step_freq = (uint32_t) (*sg_pin[ch].pos_scale * rtapi_fabs(pos_task));
+        step_freq_max = (uint32_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].maxvel));
+        if ( sg_dat[ch].step_freq > step_freq_max ) sg_dat[ch].step_freq = step_freq_max;
+
+        // get task steps acceleration
+        step_accel_max = (uint32_t) rtapi_fabs((*sg_pin[ch].pos_scale) * (*sg_pin[ch].maxaccel));
+        step_accel_task = sg_dat[ch].step_freq_old > sg_dat[ch].step_freq ?
+            sg_dat[ch].step_freq_old - sg_dat[ch].step_freq :
+            sg_dat[ch].step_freq - sg_dat[ch].step_freq_old;
+        if ( step_accel_task > step_accel_max ) step_accel_task = step_accel_max;
 
         // TODO
     }
