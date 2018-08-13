@@ -365,7 +365,7 @@ static void stepgen_update_freq(void *arg, long period)
         dir_change = s.dir_state == move_forward ? 1 : 0;
 
         // goto next channel if nothing to do here
-        if ( step_task == 0 && !dir_change ) continue;
+        if ( !step_task && !dir_change ) continue;
 
         // we have a task
         s.task = 1;
@@ -373,6 +373,8 @@ static void stepgen_update_freq(void *arg, long period)
         // get frequency and acceleration limits
         s.step_freq_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.vel_max));
         s.step_accel_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.accel_max));
+        if ( !s.step_freq_max ) s.step_freq_max = UINT64_MAX;
+        if ( !s.step_accel_max ) s.step_accel_max = UINT64_MAX;
 
         // get current steps frequency
         s.step_freq_old = s.step_freq;
@@ -401,8 +403,12 @@ static void stepgen_update_freq(void *arg, long period)
         else // just a few steps
         {
             s.task_type = TASK_STEPS;
+            s.step_task_dir0 = move_forward ? 1 : -1;
 
-            // TODO
+            // TODO - pin setup time and pin hold time calculation
+
+            pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2,
+                period/step_task/2, period/step_task/2, 0);
         }
     }
 
