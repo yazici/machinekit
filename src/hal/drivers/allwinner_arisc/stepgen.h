@@ -347,6 +347,7 @@ static void stepgen_update_freq(void *arg, long period)
     static hal_bit_t move_forward, dir_change;
     static hal_float_t pos_task;
     static hal_s32_t step_task;
+    static hal_u32_t pin_setup, pin_hold;
 
 #define sp sg_pin[ch]
 #define s *sg_pin[ch]
@@ -398,10 +399,24 @@ static void stepgen_update_freq(void *arg, long period)
         // set task for the pulsgen
         if ( dir_change ) // with DIR change
         {
-            if ( !step_task )
+            if ( !step_task ) // just a DIR change
             {
                 s.task_type = TASK_DIR;
-                pulsgen_task_setup(s.dir_pulsgen_ch, 1, period/2, period/2, 0);
+                pin_setup = period / 2;
+                pulsgen_task_setup(s.dir_pulsgen_ch, 1, pin_setup, pin_setup, 0);
+                continue;
+            }
+
+            if ( !s.step_freq_old ) // a DIR change anda few STEPs
+            {
+                s.task_type = TASK_DIR_STEPS;
+
+                pin_setup = (period - 100000) / step_task / 2;
+
+                pulsgen_task_setup(s.dir_pulsgen_ch, 1, 50000, 50000, 0);
+                pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2*100/80,
+                    pin_setup, pin_setup, 100000);
+
                 continue;
             }
 
@@ -411,17 +426,10 @@ static void stepgen_update_freq(void *arg, long period)
         {
             s.task_type = TASK_STEPS;
             s.step_task_dir0 = move_forward ? 1 : -1;
+            pin_setup = period / step_task / 2;
 
-            // TODO - pin setup time and pin hold time calculation
-            // based on step_setup/step_hold
-
-            pulsgen_task_setup(
-                s.step_pulsgen_ch0,
-                step_task*2*100/80, // add 20% to the step_task value
-                period/step_task/2, // pin setup time
-                period/step_task/2, // pin hold time
-                0 // no startup delay
-            );
+            pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2*100/80,
+                pin_setup, pin_setup, 0);
         }
     }
 
