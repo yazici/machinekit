@@ -364,12 +364,6 @@ static void stepgen_update_freq(void *arg, long period)
         move_forward = pos_task > 0.0 ? 1 : 0;
         dir_change = s.dir_state == move_forward ? 1 : 0;
 
-        // goto next channel if nothing to do here
-        if ( !step_task && !dir_change ) continue;
-
-        // we have a task
-        s.task = 1;
-
         // get frequency and acceleration limits
         s.step_freq_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.vel_max));
         s.step_accel_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.accel_max));
@@ -395,9 +389,22 @@ static void stepgen_update_freq(void *arg, long period)
             s.step_freq = step_task * 1000000000 / period;
         }
 
-        // set task type
+        // goto next channel if nothing to do here
+        if ( !step_task && !dir_change ) continue;
+
+        // we have a task
+        s.task = 1;
+
+        // set task for the pulsgen
         if ( dir_change ) // with DIR change
         {
+            if ( !step_task )
+            {
+                s.task_type = TASK_DIR;
+                pulsgen_task_setup(s.dir_pulsgen_ch, 1, period/2, period/2, 0);
+                continue;
+            }
+
             // TODO
         }
         else // just a few steps
@@ -406,9 +413,15 @@ static void stepgen_update_freq(void *arg, long period)
             s.step_task_dir0 = move_forward ? 1 : -1;
 
             // TODO - pin setup time and pin hold time calculation
+            // based on step_setup/step_hold
 
-            pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2,
-                period/step_task/2, period/step_task/2, 0);
+            pulsgen_task_setup(
+                s.step_pulsgen_ch0,
+                step_task*2*100/80, // add 20% to the step_task value
+                period/step_task/2, // pin setup time
+                period/step_task/2, // pin hold time
+                0 // no startup delay
+            );
         }
     }
 
