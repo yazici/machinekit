@@ -393,11 +393,13 @@ static int32_t gpio_malloc_and_export(const char *comp_name, int32_t comp_id)
             if ( (pin == 0 && token[2] != '0') || pin >= GPIO_PINS_CNT ) continue;
 
             // export pin function
-            retval = hal_pin_bit_newf(HAL_IO, &gpio_hal_0[port][pin], comp_id,
+            retval = hal_pin_bit_newf( (n ? HAL_IN : HAL_OUT),
+                &gpio_hal_0[port][pin], comp_id,
                 "%s.gpio.%s-%s", comp_name, token, type_str);
 
             // export pin inverted function
-            retval += hal_pin_bit_newf(HAL_IO, &gpio_hal_1[port][pin], comp_id,
+            retval += hal_pin_bit_newf( (n ? HAL_IN : HAL_OUT),
+                &gpio_hal_1[port][pin], comp_id,
                 "%s.gpio.%s-%s-not", comp_name, token, type_str);
 
             if (retval < 0)
