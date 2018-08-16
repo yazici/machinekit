@@ -27,10 +27,10 @@ typedef struct
 
     hal_bit_t *enable;
 
-    hal_u32_t *step_space;
-    hal_u32_t *step_len;
-    hal_u32_t *dir_setup;
-    hal_u32_t *dir_hold;
+    hal_u64_t *step_space;
+    hal_u64_t *step_len;
+    hal_u64_t *dir_setup;
+    hal_u64_t *dir_hold;
 
     hal_float_t *vel_max;
     hal_float_t *accel_max;
@@ -41,28 +41,33 @@ typedef struct
 
     // this HAL pins can be private
 
-    hal_u32_t *step_port;
-    hal_u32_t *step_pin;
+    hal_u64_t *step_port;
+    hal_u64_t *step_pin;
     hal_bit_t *step_inv;
     hal_bit_t *step_state;
-    hal_u32_t *step_pulsgen_ch0;
-    hal_u32_t *step_pulsgen_ch1;
-    hal_s32_t *step_task_dir0;
-    hal_s32_t *step_task_dir1;
+    hal_u64_t *step_pulsgen_ch0;
+    hal_u64_t *step_pulsgen_ch1;
+    hal_u64_t *step_task;
+    hal_s64_t *step_task_dir0;
+    hal_s64_t *step_task_dir1;
+    hal_u64_t *step_task_t0;
+    hal_u64_t *step_task_t1;
+    hal_u64_t *step_task_t0_time;
+    hal_u64_t *step_task_t1_time;
     hal_u64_t *step_freq;
     hal_u64_t *step_freq_old;
     hal_u64_t *step_freq_max;
     hal_u64_t *step_accel;
     hal_u64_t *step_accel_max;
 
-    hal_u32_t *dir_port;
-    hal_u32_t *dir_pin;
+    hal_u64_t *dir_port;
+    hal_u64_t *dir_pin;
     hal_bit_t *dir_inv;
     hal_bit_t *dir_state;
-    hal_u32_t *dir_pulsgen_ch;
+    hal_u64_t *dir_pulsgen_ch;
 
     hal_bit_t *task;
-    hal_u32_t *task_type;
+    hal_u64_t *task_type;
 
     hal_float_t *pos_cmd_old;
 } stepgen_pin_t;
@@ -83,7 +88,7 @@ typedef struct
 
 enum
 {
-    TASK_STEPS,
+    TASK_STEPS = 1,
     TASK_DIR,
     TASK_DIR_STEPS,
     TASK_STEPS_DIR,
@@ -117,7 +122,7 @@ static void stepgen_capture_pos(void *arg, long period)
 {
     static uint8_t ch, pos_changed;
     static hal_bit_t dir_state;
-    static uint32_t t0, t1, d0;
+    static hal_u64_t t0, t1, d0;
 
     // check all used channels
     for ( ch = stepgen_ch_cnt; ch--; )
@@ -138,8 +143,8 @@ static void stepgen_capture_pos(void *arg, long period)
             case TASK_STEPS:
             {
                 // abort last pulsgen tasks and get pin toggles count
-                pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
-                t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
+                pulsgen_task_abort((hal_u32_t)*sg_pin[ch].step_pulsgen_ch0);
+                t0 = (hal_u64_t) pulsgen_task_toggles((hal_u32_t)*sg_pin[ch].step_pulsgen_ch0);
 
                 // update pin states
                 *sg_pin[ch].step_state = t0 && (t0 % 2) ? 1 : 0;
@@ -157,12 +162,14 @@ static void stepgen_capture_pos(void *arg, long period)
                     *sg_pin[ch].step_state = 0;
                 }
 
+                *sg_pin[ch].step_task_t0 = t0;
+
                 // position is same
                 if ( !t0 ) break;
 
                 // update HAL feedback pin
-                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd_old +
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) /
                     (*sg_pin[ch].pos_scale);
 
                 // position was changed
@@ -197,6 +204,7 @@ static void stepgen_capture_pos(void *arg, long period)
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
                 d0 = pulsgen_task_toggles(*sg_pin[ch].dir_pulsgen_ch);
                 t0 = pulsgen_task_toggles(*sg_pin[ch].step_pulsgen_ch0);
+                *sg_pin[ch].step_task_t0 = t0;
 
                 dir_state = d0 && (d0 % 2) ? 1 : *sg_pin[ch].dir_state;
 
@@ -224,11 +232,13 @@ static void stepgen_capture_pos(void *arg, long period)
                     *sg_pin[ch].step_state = 0;
                 }
 
+                *sg_pin[ch].step_task_t0 = t0;
+
                 if ( !t0 ) break;
 
-                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd +
+                *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd_old +
                     (dir_state ? -1.0 : 1.0) *
-                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) *
+                    ((hal_float_t)(t0/2 * (*sg_pin[ch].step_task_dir0))) /
                     (*sg_pin[ch].pos_scale);
 
                 pos_changed = 1;
@@ -345,7 +355,7 @@ static void stepgen_update_freq(void *arg, long period)
     static hal_u8_t ch;
     static hal_float_t pos_task;
     static hal_bit_t move_forward, dir_change;
-    static hal_u32_t step_task, toggle_time, step_freq_max, steps_time;
+    static hal_u64_t step_task, toggle_time, steps_time, step_freq_max;
 
 #define sp sg_pin[ch]
 #define s *sg_pin[ch]
@@ -354,12 +364,15 @@ static void stepgen_update_freq(void *arg, long period)
     for ( ch = stepgen_ch_cnt; ch--; )
     {
         // goto next channel if current is off or idle
-        if ( !s.enable ) continue;
+        if ( !s.enable || s.task ) continue;
         if ( u64v(sp.pos_cmd) == u64v(sp.pos_cmd_old) ) continue;
+
+        // abort any tasks
+        s.task = 0;
 
         // get task data
         pos_task = s.pos_cmd - s.pos_cmd_old;
-        step_task = (hal_s32_t) (s.pos_scale * rtapi_fabs(pos_task));
+        step_task = (hal_u64_t) (s.pos_scale * rtapi_fabs(pos_task));
         move_forward = pos_task >= 0 ? 1 : 0;
         dir_change = s.dir_state == move_forward ? 1 : 0;
 
@@ -379,19 +392,22 @@ static void stepgen_update_freq(void *arg, long period)
         step_freq_max = s.step_freq_old + s.step_accel_max;
         if ( s.step_freq_max > step_freq_max ) s.step_freq_max = step_freq_max;
 
-        steps_time = dir_change ? (period - s.dir_hold - s.dir_setup) : period;
+        steps_time = dir_change ? ((hal_u64_t)period) - s.dir_hold - s.dir_setup : ((hal_u64_t)period);
         if ( steps_time > period ) steps_time = 1;
 
         // get current steps frequency
         s.step_freq_old = s.step_freq;
-        s.step_freq = step_task * 1000000000 / steps_time;
+        s.step_freq = step_task * ((hal_u64_t)1000000000) / steps_time;
         if ( s.step_freq > s.step_freq_max )
         {
             s.step_freq = s.step_freq_max;
-            step_task = s.step_freq * steps_time / 1000000000;
+            step_task = s.step_freq * steps_time / ((hal_u64_t)1000000000);
         }
 
         if ( !step_task && !dir_change ) continue;
+
+        // we have a task
+        s.task = 1;
 
         // set task for the pulsgen
         if ( dir_change ) // with DIR change
@@ -406,13 +422,17 @@ static void stepgen_update_freq(void *arg, long period)
                 s.task_type = TASK_DIR_STEPS;
                 s.step_task_dir0 = move_forward ? 1 : -1;
 
-                toggle_time = s.step_freq / steps_time / 1000000000;
-                step_task = step_task * 2 * 100 / 80;
+                toggle_time = steps_time / step_task / 2;
+                s.step_task_t0_time = toggle_time;
 
-                pulsgen_task_setup(s.dir_pulsgen_ch, 1,
-                    s.dir_setup, s.dir_hold, 0);
-                pulsgen_task_setup(s.step_pulsgen_ch0, step_task,
-                    toggle_time, toggle_time, s.dir_setup + s.dir_hold);
+                step_task = step_task * 2 * 100 / 80;
+                s.step_task = step_task;
+
+                pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1,
+                    (hal_u32_t)s.dir_setup, (hal_u32_t)s.dir_hold, 0);
+                pulsgen_task_setup((hal_u32_t)s.step_pulsgen_ch0, (hal_u32_t)step_task,
+                    (hal_u32_t)toggle_time, (hal_u32_t)toggle_time,
+                    s.dir_setup + s.dir_hold);
             }
         }
         else // just a few steps
@@ -420,11 +440,14 @@ static void stepgen_update_freq(void *arg, long period)
             s.task_type = TASK_STEPS;
             s.step_task_dir0 = move_forward ? 1 : -1;
 
-            toggle_time = s.step_freq / steps_time / 1000000000;
-            step_task = step_task * 2 * 100 / 80;
+            toggle_time = steps_time / step_task / 2;
+            s.step_task_t0_time = toggle_time;
 
-            pulsgen_task_setup(s.step_pulsgen_ch0, step_task,
-                toggle_time, toggle_time, 0);
+            step_task = step_task * 2 * 100 / 80;
+            s.step_task = step_task;
+
+            pulsgen_task_setup((hal_u32_t)s.step_pulsgen_ch0, (hal_u32_t)step_task,
+                (hal_u32_t)toggle_time, (hal_u32_t)toggle_time, 0);
         }
     }
 
@@ -528,36 +551,41 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     for ( r = 0, ch = stepgen_ch_cnt; ch--; )
     {
         EXPORT(bit,enable,"enable", 0);
-        EXPORT(u32,step_space,"step_space", 1);
-        EXPORT(u32,step_len,"step_len", 1);
-        EXPORT(u32,dir_setup,"dir_setup", 1);
-        EXPORT(u32,dir_hold,"dir_hold", 1);
+        EXPORT(u64,step_space,"step_space", 1);
+        EXPORT(u64,step_len,"step_len", 1);
+        EXPORT(u64,dir_setup,"dir_setup", 1);
+        EXPORT(u64,dir_hold,"dir_hold", 1);
         EXPORT(float,pos_scale,"pos_scale", 1.0);
         EXPORT(float,vel_max,"vel_max", 0.0);
         EXPORT(float,accel_max,"accel_max", 0.0);
         EXPORT(float,pos_cmd,"pos_cmd", 0.0);
         EXPORT(float,pos_fb,"pos_fb", 0.0);
 
-        EXPORT(u32,step_port,"step_port", sg_dat[ch].step_port);
-        EXPORT(u32,step_pin,"step_pin", sg_dat[ch].step_pin);
+        EXPORT(u64,step_port,"step_port", sg_dat[ch].step_port);
+        EXPORT(u64,step_pin,"step_pin", sg_dat[ch].step_pin);
         EXPORT(bit,step_inv,"step_inv", sg_dat[ch].step_inv);
         EXPORT(bit,step_state,"step_state", 0);
-        EXPORT(u32,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
-        EXPORT(u32,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
-        EXPORT(s32,step_task_dir0,"step_task_dir0", 0);
-        EXPORT(s32,step_task_dir1,"step_task_dir1", 0);
+        EXPORT(u64,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
+        EXPORT(u64,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
+        EXPORT(u64,step_task,"step_task", 0);
+        EXPORT(s64,step_task_dir0,"step_task_dir0", 0);
+        EXPORT(s64,step_task_dir1,"step_task_dir1", 0);
+        EXPORT(u64,step_task_t0,"step_task_t0", 0);
+        EXPORT(u64,step_task_t1,"step_task_t1", 0);
+        EXPORT(u64,step_task_t0_time,"step_task_t0_time", 0);
+        EXPORT(u64,step_task_t1_time,"step_task_t1_time", 0);
         EXPORT(u64,step_freq,"step_freq", 0);
         EXPORT(u64,step_freq_old,"step_freq_old", 0);
         EXPORT(u64,step_freq_max,"step_freq_max", 0);
         EXPORT(u64,step_accel,"step_accel", 0);
         EXPORT(u64,step_accel_max,"step_accel_max", 0);
-        EXPORT(u32,dir_port,"dir_port", sg_dat[ch].dir_port);
-        EXPORT(u32,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
+        EXPORT(u64,dir_port,"dir_port", sg_dat[ch].dir_port);
+        EXPORT(u64,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
         EXPORT(bit,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
         EXPORT(bit,dir_state,"dir_state", 0);
-        EXPORT(u32,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
+        EXPORT(u64,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
         EXPORT(bit,task,"task", 0);
-        EXPORT(u32,task_type,"task_type", 0);
+        EXPORT(u64,task_type,"task_type", 0);
         EXPORT(float,pos_cmd_old,"pos_cmd_old", 0.0);
     }
     if ( r )
