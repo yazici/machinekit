@@ -49,8 +49,6 @@ typedef struct
     hal_u32_t *step_pulsgen_ch1;
     hal_s32_t *step_task_dir0;
     hal_s32_t *step_task_dir1;
-    hal_u32_t *step_task_toggles0;
-    hal_u32_t *step_task_toggles1;
     hal_u64_t *step_freq;
     hal_u64_t *step_freq_old;
     hal_u64_t *step_freq_max;
@@ -236,7 +234,7 @@ static void stepgen_capture_pos(void *arg, long period)
                 pos_changed = 1;
                 break;
             }
-
+#if 0
             case TASK_STEPS_DIR:
             {
                 pulsgen_task_abort(*sg_pin[ch].step_pulsgen_ch0);
@@ -329,6 +327,7 @@ static void stepgen_capture_pos(void *arg, long period)
                 pos_changed = 1;
                 break;
             }
+#endif
         }
 
         if ( !pos_changed ) *sg_pin[ch].pos_fb = *sg_pin[ch].pos_cmd;
@@ -344,10 +343,9 @@ static void stepgen_capture_pos(void *arg, long period)
 static void stepgen_update_freq(void *arg, long period)
 {
     static hal_u8_t ch;
-    static hal_bit_t move_forward, dir_change;
     static hal_float_t pos_task;
-    static hal_s32_t step_task;
-    static hal_u32_t pin_setup, pin_hold;
+    static hal_bit_t move_forward, dir_change;
+    static hal_u32_t step_task, toggle_time, step_freq_max, steps_time;
 
 #define sp sg_pin[ch]
 #define s *sg_pin[ch]
@@ -362,39 +360,38 @@ static void stepgen_update_freq(void *arg, long period)
         // get task data
         pos_task = s.pos_cmd - s.pos_cmd_old;
         step_task = (hal_s32_t) (s.pos_scale * rtapi_fabs(pos_task));
-        move_forward = pos_task > 0.0 ? 1 : 0;
+        move_forward = pos_task >= 0 ? 1 : 0;
         dir_change = s.dir_state == move_forward ? 1 : 0;
 
-        // get frequency and acceleration limits
+        // pre-process some input data
+        if ( !s.dir_hold ) s.dir_hold = 1;
+        if ( !s.dir_setup ) s.dir_setup = 1;
+        if ( !s.step_len ) s.step_len = 1;
+        if ( !s.step_space ) s.step_space = 1;
+
         s.step_freq_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.vel_max));
+        if ( !s.step_freq_max ) s.step_freq_max = 999999999;
+        step_freq_max = 1000000000 / (s.step_len + s.step_space);
+        if ( s.step_freq_max > step_freq_max ) s.step_freq_max = step_freq_max;
+
         s.step_accel_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.accel_max));
-        if ( !s.step_freq_max ) s.step_freq_max = UINT64_MAX;
-        if ( !s.step_accel_max ) s.step_accel_max = UINT64_MAX;
+        if ( !s.step_accel_max ) s.step_accel_max = 999999999;
+        step_freq_max = s.step_freq_old + s.step_accel_max;
+        if ( s.step_freq_max > step_freq_max ) s.step_freq_max = step_freq_max;
+
+        steps_time = dir_change ? (period - s.dir_hold - s.dir_setup) : period;
+        if ( steps_time > period ) steps_time = 1;
 
         // get current steps frequency
         s.step_freq_old = s.step_freq;
-        s.step_freq = step_task * 1000000000 / period;
+        s.step_freq = step_task * 1000000000 / steps_time;
         if ( s.step_freq > s.step_freq_max )
         {
-            step_task = step_task * s.step_freq_max / s.step_freq;
-            s.step_freq = step_task * 1000000000 / period;
+            s.step_freq = s.step_freq_max;
+            step_task = s.step_freq * steps_time / 1000000000;
         }
 
-        // get current steps acceleration
-        s.step_accel = s.step_freq_old > s.step_freq ?
-            s.step_freq_old - s.step_freq :
-            s.step_freq - s.step_freq_old ;
-        if ( s.step_accel > s.step_accel_max )
-        {
-            step_task = step_task * s.step_accel_max / s.step_accel;
-            s.step_freq = step_task * 1000000000 / period;
-        }
-
-        // goto next channel if nothing to do here
         if ( !step_task && !dir_change ) continue;
-
-        // we have a task
-        s.task = 1;
 
         // set task for the pulsgen
         if ( dir_change ) // with DIR change
@@ -402,34 +399,32 @@ static void stepgen_update_freq(void *arg, long period)
             if ( !step_task ) // just a DIR change
             {
                 s.task_type = TASK_DIR;
-                pin_setup = period / 2;
-                pulsgen_task_setup(s.dir_pulsgen_ch, 1, pin_setup, pin_setup, 0);
-                continue;
+                pulsgen_task_setup(s.dir_pulsgen_ch, 1, s.dir_setup, s.dir_hold, 0);
             }
-
-            if ( !s.step_freq_old ) // a DIR change anda few STEPs
+            else // DIR change with few steps
             {
                 s.task_type = TASK_DIR_STEPS;
+                s.step_task_dir0 = move_forward ? 1 : -1;
 
-                pin_setup = (period - 100000) / step_task / 2;
+                toggle_time = s.step_freq / steps_time / 1000000000;
+                step_task = step_task * 2 * 100 / 80;
 
-                pulsgen_task_setup(s.dir_pulsgen_ch, 1, 50000, 50000, 0);
-                pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2*100/80,
-                    pin_setup, pin_setup, 100000);
-
-                continue;
+                pulsgen_task_setup(s.dir_pulsgen_ch, 1,
+                    s.dir_setup, s.dir_hold, 0);
+                pulsgen_task_setup(s.step_pulsgen_ch0, step_task,
+                    toggle_time, toggle_time, s.dir_setup + s.dir_hold);
             }
-
-            // TODO
         }
         else // just a few steps
         {
             s.task_type = TASK_STEPS;
             s.step_task_dir0 = move_forward ? 1 : -1;
-            pin_setup = period / step_task / 2;
 
-            pulsgen_task_setup(s.step_pulsgen_ch0, step_task*2*100/80,
-                pin_setup, pin_setup, 0);
+            toggle_time = s.step_freq / steps_time / 1000000000;
+            step_task = step_task * 2 * 100 / 80;
+
+            pulsgen_task_setup(s.step_pulsgen_ch0, step_task,
+                toggle_time, toggle_time, 0);
         }
     }
 
@@ -551,8 +546,6 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(u32,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
         EXPORT(s32,step_task_dir0,"step_task_dir0", 0);
         EXPORT(s32,step_task_dir1,"step_task_dir1", 0);
-        EXPORT(u32,step_task_toggles0,"step_task_toggles0", 0);
-        EXPORT(u32,step_task_toggles1,"step_task_toggles1", 0);
         EXPORT(u64,step_freq,"step_freq", 0);
         EXPORT(u64,step_freq_old,"step_freq_old", 0);
         EXPORT(u64,step_freq_max,"step_freq_max", 0);
