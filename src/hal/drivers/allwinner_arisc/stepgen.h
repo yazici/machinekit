@@ -543,51 +543,51 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     }
 
 
-    // export HAL pins
-    #define EXPORT(TYPE,VAL,NAME,DEFAULT) \
-        r += hal_pin_##TYPE##_newf(HAL_IO, &(sg_pin[ch].VAL), comp_id,\
-        "%s.stepgen.%d." NAME, comp_name, ch);\
-        *sg_pin[ch].VAL = DEFAULT;
+#define EXPORT(IO_TYPE,TYPE,VAL,NAME,DEFAULT) \
+    r += hal_pin_##TYPE##_newf(IO_TYPE, &(sg_pin[ch].VAL), comp_id,\
+    "%s.stepgen.%d." NAME, comp_name, ch);\
+    *sg_pin[ch].VAL = DEFAULT;
 
+    // export HAL pins
     for ( r = 0, ch = stepgen_ch_cnt; ch--; )
     {
-        EXPORT(bit,enable,"enable", 0);
-        EXPORT(u64,step_space,"step_space", 1);
-        EXPORT(u64,step_len,"step_len", 1);
-        EXPORT(u64,dir_setup,"dir_setup", 1);
-        EXPORT(u64,dir_hold,"dir_hold", 1);
-        EXPORT(float,pos_scale,"pos_scale", 1.0);
-        EXPORT(float,vel_max,"vel_max", 0.0);
-        EXPORT(float,accel_max,"accel_max", 0.0);
-        EXPORT(float,pos_cmd,"pos_cmd", 0.0);
-        EXPORT(float,pos_fb,"pos_fb", 0.0);
+        EXPORT(HAL_IN,bit,enable,"enable", 0);
+        EXPORT(HAL_IN,u64,step_space,"step_space", 1);
+        EXPORT(HAL_IN,u64,step_len,"step_len", 1);
+        EXPORT(HAL_IN,u64,dir_setup,"dir_setup", 1);
+        EXPORT(HAL_IN,u64,dir_hold,"dir_hold", 1);
+        EXPORT(HAL_IN,float,pos_scale,"pos_scale", 1.0);
+        EXPORT(HAL_IN,float,vel_max,"vel_max", 0.0);
+        EXPORT(HAL_IN,float,accel_max,"accel_max", 0.0);
+        EXPORT(HAL_IN,float,pos_cmd,"pos_cmd", 0.0);
+        EXPORT(HAL_OUT,float,pos_fb,"pos_fb", 0.0);
 
-        EXPORT(u64,step_port,"step_port", sg_dat[ch].step_port);
-        EXPORT(u64,step_pin,"step_pin", sg_dat[ch].step_pin);
-        EXPORT(bit,step_inv,"step_inv", sg_dat[ch].step_inv);
-        EXPORT(bit,step_state,"step_state", 0);
-        EXPORT(u64,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
-        EXPORT(u64,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
-        EXPORT(u64,step_task,"step_task", 0);
-        EXPORT(s64,step_task_dir0,"step_task_dir0", 0);
-        EXPORT(s64,step_task_dir1,"step_task_dir1", 0);
-        EXPORT(u64,step_task_t0,"step_task_t0", 0);
-        EXPORT(u64,step_task_t1,"step_task_t1", 0);
-        EXPORT(u64,step_task_t0_time,"step_task_t0_time", 0);
-        EXPORT(u64,step_task_t1_time,"step_task_t1_time", 0);
-        EXPORT(u64,step_freq,"step_freq", 0);
-        EXPORT(u64,step_freq_old,"step_freq_old", 0);
-        EXPORT(u64,step_freq_max,"step_freq_max", 0);
-        EXPORT(u64,step_accel,"step_accel", 0);
-        EXPORT(u64,step_accel_max,"step_accel_max", 0);
-        EXPORT(u64,dir_port,"dir_port", sg_dat[ch].dir_port);
-        EXPORT(u64,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
-        EXPORT(bit,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
-        EXPORT(bit,dir_state,"dir_state", 0);
-        EXPORT(u64,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
-        EXPORT(bit,task,"task", 0);
-        EXPORT(u64,task_type,"task_type", 0);
-        EXPORT(float,pos_cmd_old,"pos_cmd_old", 0.0);
+        EXPORT(HAL_IO,u64,step_port,"step_port", sg_dat[ch].step_port);
+        EXPORT(HAL_IO,u64,step_pin,"step_pin", sg_dat[ch].step_pin);
+        EXPORT(HAL_IO,bit,step_inv,"step_inv", sg_dat[ch].step_inv);
+        EXPORT(HAL_IO,bit,step_state,"step_state", 0);
+        EXPORT(HAL_IO,u64,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
+        EXPORT(HAL_IO,u64,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
+        EXPORT(HAL_IO,u64,step_task,"step_task", 0);
+        EXPORT(HAL_IO,s64,step_task_dir0,"step_task_dir0", 0);
+        EXPORT(HAL_IO,s64,step_task_dir1,"step_task_dir1", 0);
+        EXPORT(HAL_IO,u64,step_task_t0,"step_task_t0", 0);
+        EXPORT(HAL_IO,u64,step_task_t1,"step_task_t1", 0);
+        EXPORT(HAL_IO,u64,step_task_t0_time,"step_task_t0_time", 0);
+        EXPORT(HAL_IO,u64,step_task_t1_time,"step_task_t1_time", 0);
+        EXPORT(HAL_IO,u64,step_freq,"step_freq", 0);
+        EXPORT(HAL_IO,u64,step_freq_old,"step_freq_old", 0);
+        EXPORT(HAL_IO,u64,step_freq_max,"step_freq_max", 0);
+        EXPORT(HAL_IO,u64,step_accel,"step_accel", 0);
+        EXPORT(HAL_IO,u64,step_accel_max,"step_accel_max", 0);
+        EXPORT(HAL_IO,u64,dir_port,"dir_port", sg_dat[ch].dir_port);
+        EXPORT(HAL_IO,u64,dir_pin,"dir_pin", sg_dat[ch].dir_pin);
+        EXPORT(HAL_IO,bit,dir_inv,"dir_inv", sg_dat[ch].dir_inv);
+        EXPORT(HAL_IO,bit,dir_state,"dir_state", 0);
+        EXPORT(HAL_IO,u64,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
+        EXPORT(HAL_IO,bit,task,"task", 0);
+        EXPORT(HAL_IO,u64,task_type,"task_type", 0);
+        EXPORT(HAL_IO,float,pos_cmd_old,"pos_cmd_old", 0.0);
     }
     if ( r )
     {
@@ -595,7 +595,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         return -1;
     }
 
-    #undef EXPORT
+#undef EXPORT
 
 
     // export HAL functions
