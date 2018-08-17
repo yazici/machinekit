@@ -204,7 +204,6 @@ static void stepgen_capture_pos(void *arg, long period)
                 pulsgen_task_abort(s.step_pulsgen_ch0);
                 d0 = pulsgen_task_toggles(s.dir_pulsgen_ch);
                 t0 = pulsgen_task_toggles(s.step_pulsgen_ch0);
-                s.step_task_t0 = t0;
 
                 dir_state = d0 && (d0 % 2) ? 1 : s.dir_state;
 
@@ -236,10 +235,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
                 if ( !t0 ) break;
 
-                s.pos_fb = s.pos_cmd_old +
-                    (dir_state ? -1.0 : 1.0) *
-                    ((hal_float_t)(t0/2 * (s.step_task_dir0))) /
-                    (s.pos_scale);
+                s.pos_fb = s.pos_cmd_old - ((hal_float_t)(t0/2)) / s.pos_scale;
 
                 pos_changed = 1;
                 break;
@@ -416,7 +412,8 @@ static void stepgen_update_freq(void *arg, long period)
             if ( !step_task ) // just a DIR change
             {
                 s.task_type = TASK_DIR;
-                pulsgen_task_setup(s.dir_pulsgen_ch, 1, s.dir_setup, s.dir_hold, 0);
+                pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1,
+                    (hal_u32_t)s.dir_setup, (hal_u32_t)s.dir_hold, 0);
             }
             else // DIR change with a few steps
             {
