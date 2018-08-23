@@ -169,7 +169,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
                 // update HAL feedback pin
                 s.pos_fb = s.pos_cmd_old +
-                    ((hal_float_t)(t0/2 * (s.step_task_dir0))) /
+                    ((hal_float_t)(t0/2) * (hal_float_t)(s.step_task_dir0)) /
                     (s.pos_scale);
 
                 // position was changed
@@ -235,7 +235,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
                 if ( !t0 ) break;
 
-                s.pos_fb = s.pos_cmd_old - ((hal_float_t)(t0/2)) / s.pos_scale;
+                s.pos_fb = s.pos_cmd_old - (((hal_float_t)(t0/2)) / s.pos_scale);
 
                 pos_changed = 1;
                 break;
@@ -361,6 +361,10 @@ static void stepgen_update_freq(void *arg, long period)
             s.pos_cmd_old = s.pos_cmd;
             continue;
         }
+
+        // TODO - deceleration when we have no new commands
+        // but speed is too high to just stop
+
         if ( s.task ) continue;
         if ( u64v(sp.pos_cmd) == u64v(sp.pos_cmd_old) ) continue;
 
