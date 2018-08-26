@@ -48,6 +48,8 @@ typedef struct
     hal_u64_t *step_pulsgen_ch0;
     hal_u64_t *step_pulsgen_ch1;
     hal_u64_t *step_task;
+    hal_s64_t *step_pos;
+    hal_s64_t *step_pos_target;
     hal_s64_t *step_task_dir0;
     hal_s64_t *step_task_dir1;
     hal_u64_t *step_task_t0;
@@ -68,6 +70,7 @@ typedef struct
 
     hal_bit_t *task;
     hal_u64_t *task_type;
+    hal_u64_t *task_cnt;
 
     hal_float_t *pos_cmd_old;
 } stepgen_pin_t;
@@ -125,224 +128,26 @@ static uint8_t stepgen_ch_cnt = 0;
 
 static void stepgen_capture_pos(void *arg, long period)
 {
-    static uint8_t ch, pos_changed;
-    static hal_bit_t dir_state;
+    static hal_u8_t ch;
     static hal_u64_t t0, t1, d0;
 
     // check all used channels
     for ( ch = stepgen_ch_cnt; ch--; )
     {
-        // keep saving some data if channel is disabled or idle
-        if ( !s.enable || !s.task ) continue;
+        if ( !s.task ) goto pos_fb_calc;
 
-        pos_changed = 0;
-
-        // what kind of task it was?
         switch ( s.task_type )
         {
             case TASK_STEPS:
             {
-                // abort last pulsgen tasks and get pin toggles count
-                pulsgen_task_abort((hal_u32_t)s.step_pulsgen_ch0);
                 t0 = (hal_u64_t) pulsgen_task_toggles((hal_u32_t)s.step_pulsgen_ch0);
-
-                // update pin states
-                s.step_state = t0 && (t0 % 2) ? 1 : 0;
-
-                // if needs make a half step to complete the task
-                if ( s.step_state )
-                {
-                    if ( s.step_inv ) {
-                        gpio_pin_set(s.step_port, s.step_pin);
-                    } else {
-                        gpio_pin_clear(s.step_port, s.step_pin);
-                    }
-
-                    t0++;
-                    s.step_state = 0;
-                }
-
-                s.step_task_t0 = t0;
-
-                // position is same
-                if ( !t0 ) break;
-
-                // update HAL feedback pin
-                s.pos_fb = s.pos_cmd_old +
-                    ((hal_float_t)(t0/2) * (hal_float_t)(s.step_task_dir0)) /
-                    (s.pos_scale);
-
-                // position was changed
-                pos_changed = 1;
+                s.step_pos += (s.dir_state ? -t0 : t0) / 2;
                 break;
             }
-
-            case TASK_DIR:
-            {
-                pulsgen_task_abort(s.dir_pulsgen_ch);
-                d0 = pulsgen_task_toggles(s.dir_pulsgen_ch);
-
-                dir_state = d0 && (d0 % 2) ? 1 : s.dir_state;
-
-                if ( dir_state == s.dir_state )
-                {
-                    if ( s.dir_inv ^ dir_state ) {
-                        gpio_pin_set(s.dir_port, s.dir_pin);
-                    } else {
-                        gpio_pin_clear(s.dir_port, s.dir_pin);
-                    }
-                }
-
-                s.dir_state = s.dir_state ? 0 : 1;
-
-                break;
-            }
-
-            case TASK_DIR_STEPS:
-            {
-                pulsgen_task_abort(s.dir_pulsgen_ch);
-                pulsgen_task_abort(s.step_pulsgen_ch0);
-                d0 = pulsgen_task_toggles(s.dir_pulsgen_ch);
-                t0 = pulsgen_task_toggles(s.step_pulsgen_ch0);
-
-                dir_state = d0 && (d0 % 2) ? 1 : s.dir_state;
-
-                if ( dir_state == s.dir_state )
-                {
-                    if ( s.dir_inv ^ dir_state ) {
-                        gpio_pin_set(s.dir_port, s.dir_pin);
-                    } else {
-                        gpio_pin_clear(s.dir_port, s.dir_pin);
-                    }
-                }
-
-                s.dir_state = s.dir_state ? 0 : 1;
-                s.step_state = t0 && (t0 % 2) ? 1 : 0;
-
-                if ( s.step_state )
-                {
-                    if ( s.step_inv ) {
-                        gpio_pin_set(s.step_port, s.step_pin);
-                    } else {
-                        gpio_pin_clear(s.step_port, s.step_pin);
-                    }
-
-                    t0++;
-                    s.step_state = 0;
-                }
-
-                s.step_task_t0 = t0;
-
-                if ( !t0 ) break;
-
-                s.pos_fb = s.pos_cmd_old - (((hal_float_t)(t0/2)) / s.pos_scale);
-
-                pos_changed = 1;
-                break;
-            }
-#if 0
-            case TASK_STEPS_DIR:
-            {
-                pulsgen_task_abort(s.step_pulsgen_ch0);
-                pulsgen_task_abort(s.dir_pulsgen_ch);
-                d0 = pulsgen_task_toggles(s.dir_pulsgen_ch);
-                t0 = pulsgen_task_toggles(s.step_pulsgen_ch0);
-
-                dir_state = d0 && (d0 % 2) ? 1 : s.dir_state;
-
-                if ( dir_state == s.dir_state )
-                {
-                    if ( s.dir_inv ^ dir_state ) {
-                        gpio_pin_set(s.dir_port, s.dir_pin);
-                    } else {
-                        gpio_pin_clear(s.dir_port, s.dir_pin);
-                    }
-                }
-
-                s.dir_state = s.dir_state ? 0 : 1;
-                s.step_state = t0 && (t0 % 2) ? 1 : 0;
-
-                if ( s.step_state )
-                {
-                    if ( s.step_inv ) {
-                        gpio_pin_set(s.step_port, s.step_pin);
-                    } else {
-                        gpio_pin_clear(s.step_port, s.step_pin);
-                    }
-
-                    t0++;
-                    s.step_state = 0;
-                }
-
-                if ( !t0 ) break;
-
-                s.pos_fb = s.pos_cmd +
-                    ((hal_float_t)(t0/2 * (s.step_task_dir0))) *
-                    (s.pos_scale);
-
-                pos_changed = 1;
-                break;
-            }
-
-            case TASK_STEPS_DIR_STEPS:
-            {
-                pulsgen_task_abort(s.step_pulsgen_ch0);
-                pulsgen_task_abort(s.dir_pulsgen_ch);
-                pulsgen_task_abort(s.step_pulsgen_ch1);
-                t0 = pulsgen_task_toggles(s.step_pulsgen_ch0);
-                d0 = pulsgen_task_toggles(s.dir_pulsgen_ch);
-                t1 = pulsgen_task_toggles(s.step_pulsgen_ch1);
-
-                dir_state = d0 && (d0 % 2) ? 1 : s.dir_state;
-
-                if ( dir_state == s.dir_state )
-                {
-                    if ( s.dir_inv ^ dir_state ) {
-                        gpio_pin_set(s.dir_port, s.dir_pin);
-                    } else {
-                        gpio_pin_clear(s.dir_port, s.dir_pin);
-                    }
-                }
-
-                s.dir_state = s.dir_state ? 0 : 1;
-                s.step_state = (t0+t1) && ((t0+t1) % 2) ? 1 : 0;
-
-                if ( s.step_state )
-                {
-                    if ( s.step_inv ) {
-                        gpio_pin_set(s.step_port, s.step_pin);
-                    } else {
-                        gpio_pin_clear(s.step_port, s.step_pin);
-                    }
-
-                    t1++;
-                    s.step_state = 0;
-                }
-
-                if ( !t0 && !t1 ) break;
-
-                s.pos_fb = s.pos_cmd +
-                    ((hal_float_t)(t0/2 * (s.step_task_dir0))) *
-                    (s.pos_scale);
-
-                s.pos_fb +=
-                    (dir_state ? -1.0 : 1.0) *
-                    ((hal_float_t)(t1/2 * (s.step_task_dir1))) *
-                    (s.pos_scale);
-
-                pos_changed = 1;
-                break;
-            }
-#endif
         }
 
-        if ( !pos_changed ) s.pos_fb = s.pos_cmd;
-
-        // save current position
-        s.pos_cmd_old = s.pos_cmd;
-
-        // task done
-        s.task = 0;
+        pos_fb_calc:
+        s.pos_fb = ((hal_float_t)s.step_pos) / s.pos_scale;
     }
 }
 
@@ -350,38 +155,59 @@ static void stepgen_update_freq(void *arg, long period)
 {
     static hal_u8_t ch;
     static hal_float_t pos_task;
-    static hal_bit_t move_forward, dir_change;
-    static hal_u64_t step_task, toggle_time, steps_time, step_freq_max;
+    static hal_bit_t move_forward, dir_change, step_state, have_new_cmd;
+    static hal_u64_t t0, toggle_time, steps_time, step_freq_max;
+    static hal_s64_t step_pos, step_pos_target, step_task;
 
     for ( ch = stepgen_ch_cnt; ch--; )
     {
+        // when channel is OFF
         if ( !s.enable )
         {
             s.step_freq = 0;
+            s.step_freq_old = s.step_freq;
             s.pos_cmd_old = s.pos_cmd;
+
+            // when channel is OFF and pulse generation is ON,
+            // make a hard stop without deceleration (when ESTOP or something)
+            if ( s.task )
+            {
+                switch ( s.task_type )
+                {
+                    case TASK_STEPS:
+                    {
+                        pulsgen_task_abort((hal_u32_t)s.step_pulsgen_ch0);
+                        t0 = (hal_u64_t) pulsgen_task_toggles((hal_u32_t)s.step_pulsgen_ch0);
+
+                        // complete the step pulse
+                        if ( t0 && (t0 % 2) )
+                        {
+                            t0++;
+                            if ( s.step_inv ) gpio_pin_set  (s.step_port, s.step_pin);
+                            else              gpio_pin_clear(s.step_port, s.step_pin);
+                        }
+
+                        step_pos = s.step_pos + (s.dir_state ? -t0 : t0) / 2;
+
+                        break;
+                    }
+                }
+
+                s.step_pos = step_pos;
+                s.task = 0;
+            }
+
             continue;
         }
 
-        // TODO - deceleration when we have no new commands
-        // but speed is too high to just stop
 
-        if ( s.task ) continue;
-        if ( u64v(sp.pos_cmd) == u64v(sp.pos_cmd_old) ) continue;
+        // pre-process input data
+        if ( !s.dir_hold ) s.dir_hold = 1000;
+        if ( !s.dir_setup ) s.dir_setup = 1000;
+        if ( !s.step_len ) s.step_len = 1000;
+        if ( !s.step_space ) s.step_space = 1000;
 
-        // abort any tasks
-        s.task = 0;
-
-        // get task data
-        pos_task = s.pos_cmd - s.pos_cmd_old;
-        step_task = (hal_u64_t) (s.pos_scale * rtapi_fabs(pos_task));
-        move_forward = pos_task >= 0 ? 1 : 0;
-        dir_change = s.dir_state == move_forward ? 1 : 0;
-
-        // pre-process some input data
-        if ( !s.dir_hold ) s.dir_hold = 1;
-        if ( !s.dir_setup ) s.dir_setup = 1;
-        if ( !s.step_len ) s.step_len = 1;
-        if ( !s.step_space ) s.step_space = 1;
+        if ( s.pos_scale < 1e-20 && s.pos_scale > -1e-20 ) s.pos_scale = 1.0;
 
         s.step_freq_max = (hal_u64_t) rtapi_fabs((s.pos_scale) * (s.vel_max));
         if ( !s.step_freq_max ) s.step_freq_max = 999999999;
@@ -393,64 +219,106 @@ static void stepgen_update_freq(void *arg, long period)
         step_freq_max = s.step_freq_old + s.step_accel_max;
         if ( s.step_freq_max > step_freq_max ) s.step_freq_max = step_freq_max;
 
-        steps_time = dir_change ? ((hal_u64_t)period) - s.dir_hold - s.dir_setup : ((hal_u64_t)period);
-        if ( steps_time > period ) steps_time = 1;
 
-        // get current steps frequency
-        s.step_freq_old = s.step_freq;
-        s.step_freq = step_task * ((hal_u64_t)1000000000) / steps_time;
-        if ( s.step_freq > s.step_freq_max )
+        // have we a new position command?
+        have_new_cmd = (u64v(sp.pos_cmd) != u64v(sp.pos_cmd_old)) ? 1 : 0;
+        step_pos_target = (hal_s64_t) (s.pos_scale * s.pos_cmd);
+        have_new_cmd = (step_pos_target != s.step_pos) ? 1 : 0;
+
+
+
+        /* now we have just a few ways to go:
+            1.  if task is OFF and we have no position commands - do nothing;
+            2.  if task is OFF and we have a new position commands - set new steps position and start task;
+            3.  if task is ON and we have no position commands - change steps frequency;
+            4.  if task is ON and we have a new position command - set new steps position and change steps frequency
+        */
+
+
+
+        if ( !s.task )
         {
-            s.step_freq = s.step_freq_max;
-            step_task = s.step_freq * steps_time / ((hal_u64_t)1000000000);
+            // 1
+            if ( !have_new_cmd ) continue;
+
+            // 2
+            // get direction data
+            move_forward = step_pos_target > s.step_pos ? 1 : 0;
+            s.dir_state = gpio_pin_get(s.dir_port, s.dir_pin);
+            if ( s.dir_inv ) s.dir_state = (hal_bit_t) ~(s.dir_state);
+            dir_change = s.dir_state == move_forward ? 1 : 0;
+
+
+
         }
-
-        if ( !step_task && !dir_change ) continue;
-
-        // we have a task
-        s.task = 1;
-
-        // set task for the pulsgen
-        if ( dir_change ) // with DIR change
+        else
         {
-            if ( !step_task ) // just a DIR change
+            // 3
+            if ( !have_new_cmd )
             {
-                s.task_type = TASK_DIR;
-                pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1,
-                    (hal_u32_t)s.dir_setup, (hal_u32_t)s.dir_hold, 0);
+
             }
-            else // DIR change with a few steps
+            // 4
+            else
             {
-                s.task_type = TASK_DIR_STEPS;
-                s.step_task_dir0 = move_forward ? 1 : -1;
 
-                toggle_time = steps_time / step_task / 2;
-                s.step_task_t0_time = toggle_time;
-
-                step_task *= 2;
-                s.step_task = step_task;
-
-                pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1,
-                    (hal_u32_t)s.dir_setup, (hal_u32_t)s.dir_hold, 0);
-                pulsgen_task_setup((hal_u32_t)s.step_pulsgen_ch0, (hal_u32_t)step_task,
-                    (hal_u32_t)toggle_time, (hal_u32_t)toggle_time,
-                    s.dir_setup + s.dir_hold);
             }
         }
-        else // just a few steps
+
+
+#if 0
+        // when channel is ON and pulse generation is ON
+        if ( s.task )
         {
-            s.task_type = TASK_STEPS;
-            s.step_task_dir0 = move_forward ? 1 : -1;
+            switch ( s.task_type )
+            {
+                case TASK_STEPS:
+                {
+                    t0 = (hal_u64_t) pulsgen_task_toggles((hal_u32_t)s.step_pulsgen_ch0);
+                    step_pos = s.step_pos + (s.dir_state ? -t0 : t0) / 2;
 
-            toggle_time = 90 * steps_time / step_task / 2 / 100;
-            s.step_task_t0_time = toggle_time;
+                    // stop pulse generation when target position was achieved
+                    if (
+                        (s.dir_state && step_pos <= s.step_pos_target) ||
+                        (!s.dir_state && step_pos >= s.step_pos_target)
+                    ) {
+                        pulsgen_task_abort((hal_u32_t)s.step_pulsgen_ch0);
+                        t0 = (hal_u64_t) pulsgen_task_toggles((hal_u32_t)s.step_pulsgen_ch0);
 
-            step_task *= 2;
-            s.step_task = step_task;
+                        // complete the step pulse
+                        if ( t0 && (t0 % 2) )
+                        {
+                            t0++;
+                            if ( s.step_inv ) gpio_pin_set  (s.step_port, s.step_pin);
+                            else              gpio_pin_clear(s.step_port, s.step_pin);
+                        }
 
-            pulsgen_task_setup((hal_u32_t)s.step_pulsgen_ch0, (hal_u32_t)step_task,
-                (hal_u32_t)toggle_time, (hal_u32_t)toggle_time, 0);
+                        step_pos = s.step_pos + (s.dir_state ? -t0 : t0) / 2;
+                        s.step_freq = 0;
+                        s.task = 0;
+                    }
+
+                    break;
+                }
+            }
+
+            s.step_pos = step_pos;
         }
+#endif
+
+#if 0
+        s.task_type = TASK_STEPS;
+        s.step_task_dir0 = move_forward ? 1 : -1;
+
+        toggle_time = steps_time / step_task / 2;
+        s.step_task_t0_time = toggle_time;
+
+        step_task *= 2;
+        s.step_task = step_task;
+
+        pulsgen_task_setup((hal_u32_t)s.step_pulsgen_ch0, (hal_u32_t)step_task,
+            (hal_u32_t)toggle_time, (hal_u32_t)toggle_time, 0);
+#endif
     }
 }
 
@@ -570,6 +438,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(HAL_IO,u64,step_pulsgen_ch0,"step_pulsgen_ch0", sg_dat[ch].step_pulsgen_ch0);
         EXPORT(HAL_IO,u64,step_pulsgen_ch1,"step_pulsgen_ch1", sg_dat[ch].step_pulsgen_ch1);
         EXPORT(HAL_IO,u64,step_task,"step_task", 0);
+        EXPORT(HAL_IO,s64,step_pos,"step_pos", 0);
+        EXPORT(HAL_IO,s64,step_pos_target,"step_pos_target", 0);
         EXPORT(HAL_IO,s64,step_task_dir0,"step_task_dir0", 0);
         EXPORT(HAL_IO,s64,step_task_dir1,"step_task_dir1", 0);
         EXPORT(HAL_IO,u64,step_task_t0,"step_task_t0", 0);
@@ -588,6 +458,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT(HAL_IO,u64,dir_pulsgen_ch,"dir_pulsgen_ch", sg_dat[ch].dir_pulsgen_ch);
         EXPORT(HAL_IO,bit,task,"task", 0);
         EXPORT(HAL_IO,u64,task_type,"task_type", 0);
+        EXPORT(HAL_IO,u64,task_cnt,"task_cnt", 0);
         EXPORT(HAL_IO,float,pos_cmd_old,"pos_cmd_old", 0.0);
     }
     if ( r )
