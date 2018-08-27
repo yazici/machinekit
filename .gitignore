@@ -68,3 +68,7 @@ src/hal/cython/machinekit/*.c
 /machinekit-build-deps_*.deb
 .directory
 *.9icomp
+.cproject
+.project
+.settings/*
+
