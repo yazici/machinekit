@@ -20,6 +20,8 @@ MODULE_LICENSE("GPL");
 
 static int comp_id, vtable_id;
 static const char *name = "trivkins_adjust";
+static const char *axis_name_0 = "xyzabcuvw";
+static const char *axis_name_1 = "XYZABCUVW";
 
 hal_float_t **_adjust_data[JOINT_CNT_MAX];
 hal_float_t **_step_size;
@@ -180,6 +182,10 @@ int rtapi_app_main(void)
             {
                 retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
                               comp_id, "%s.%d.s%d", name, joint, step);
+                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
+                              comp_id, "%s.%c.s%d", name, axis_name_0[joint], step);
+                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
+                              comp_id, "%s.%c.s%d", name, axis_name_1[joint], step);
             }
             if ( retval )
             {
