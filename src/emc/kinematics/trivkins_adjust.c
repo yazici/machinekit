@@ -9,6 +9,7 @@
 #include "rtapi.h"          /* RTAPI realtime OS API */
 #include "rtapi_app.h"      /* RTAPI realtime module decls */
 #include "hal.h"
+#include <stdlib.h>
 
 
 
@@ -25,10 +26,10 @@ static const char *axis_name = "XYZABCUVW";
 hal_float_t **_adjust_data[AXIS_CNT_MAX];
 hal_float_t **_step_size;
 hal_u32_t **_steps;
-hal_u32_t **_base;
+hal_u32_t **_rel;
 
-static char *base;
-RTAPI_MP_STRING(base, "base joint id, comma separated");
+static char *rel;
+RTAPI_MP_STRING(rel, "rel joint id, comma separated");
 static char *step_size;
 RTAPI_MP_STRING(step_size, "step size, comma separated");
 static char *steps;
@@ -117,7 +118,7 @@ static vtkins_t vtk =
 int rtapi_app_main(void)
 {
     hal_s32_t retval;
-    hal_u32_t axis, step;
+    hal_u32_t axis, step, steps_cnt[AXIS_CNT_MAX] = {0};
     hal_s8_t *data, *token;
 
     // component init
@@ -137,23 +138,10 @@ int rtapi_app_main(void)
     // shared memory allocation
     _steps      = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
     _step_size  = hal_malloc(AXIS_CNT_MAX * sizeof(hal_float_t*));
-    _base       = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
-    if ( !_steps || !_step_size || !_base )
+    _rel        = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
+    if ( !_steps || !_step_size || !_rel )
     {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
-    }
-
-    // export info pins
-    for ( axis = 0, retval = 0; axis < AXIS_CNT_MAX; axis++ )
-    {
-        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],     comp_id, "%s.%d.steps",     name, axis);
-        retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis], comp_id, "%s.%d.step_size", name, axis);
-        retval += hal_pin_u32_newf  (HAL_IN,  &_base[axis],      comp_id, "%s.%d.base",      name, axis);
-    }
-    if ( retval )
-    {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL pins export failed \n", name);
-        return -1;
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: info pins hal_malloc() failed \n", name);
     }
 
     // parse parameter string
@@ -164,30 +152,47 @@ int rtapi_app_main(void)
             if ( data != NULL ) data = NULL;
 
             // get steps count
-            *_steps[axis] = (hal_u32_t) strtoul(token, NULL, 10);
-            if ( *_steps[axis] <= 0 ) continue;
-            if ( *_steps[axis] > AXIS_STEPS_MAX ) *_steps[axis] = AXIS_STEPS_MAX;
+            steps_cnt[axis] = (hal_u32_t) strtoul(token, NULL, 10);
+            if ( steps_cnt[axis] <= 0 ) continue;
+            if ( steps_cnt[axis] > AXIS_STEPS_MAX ) steps_cnt[axis] = AXIS_STEPS_MAX;
 
             // shared memory allocation
-            _adjust_data[axis] = hal_malloc(*_steps[axis] * sizeof(hal_float_t*));
-            if ( ! *_adjust_data[axis] )
+            _adjust_data[axis] = hal_malloc(steps_cnt[axis] * sizeof(hal_float_t*));
+            if ( !_adjust_data[axis] )
             {
-                rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: step pins hal_malloc() failed \n", name);
                 return -1;
             }
 
             // export step pins
-            for ( step = 0, retval = 0; step < *_steps[axis]; step++ )
+            for ( step = 0, retval = 0; step < steps_cnt[axis]; step++ )
             {
                 retval += hal_pin_float_newf(HAL_IN, &_adjust_data[axis][step],
                               comp_id, "%s.%c.%d", name, axis_name[axis], step);
             }
             if ( retval )
             {
-                rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL pins export failed \n", name);
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL step pins export failed \n", name);
                 return -1;
             }
         }
+    }
+
+    // export info pins
+    for ( axis = 0, retval = 0; axis < AXIS_CNT_MAX; axis++ )
+    {
+        if ( !steps_cnt[axis] ) continue;
+
+        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],     comp_id, "%s.%c.steps",     name, axis_name[axis]);
+        retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis], comp_id, "%s.%c.step_size", name, axis_name[axis]);
+        retval += hal_pin_u32_newf  (HAL_IN,  &_rel[axis],       comp_id, "%s.%c.rel",      name, axis_name[axis]);
+
+        *_steps[axis] = steps_cnt[axis];
+    }
+    if ( retval )
+    {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL info pins export failed \n", name);
+        return -1;
     }
 
     // parse parameter string
@@ -196,37 +201,40 @@ int rtapi_app_main(void)
         for ( axis = 0, data = step_size; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+            if ( !steps_cnt[axis] ) continue;
+
             *_step_size[axis] = (hal_float_t) strtod(token, NULL);
         }
     }
 
     // parse parameter string
-    if ( base != NULL )
+    if ( rel != NULL )
     {
-        for ( axis = 0, data = base; (token = strtok(data, ",")) != NULL; axis++ )
+        for ( axis = 0, data = rel; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+            if ( !steps_cnt[axis] ) continue;
 
             // parse axis id as number
             if ( token[0] >= '0' && token[0] <= '9' )
             {
-                *_base[axis] = (hal_u32_t) strtol(token, NULL, 10);
-                if ( *_base[axis] >= AXIS_CNT_MAX ) *_base[axis] = AXIS_CNT_MAX - 1;
+                *_rel[axis] = (hal_u32_t) strtol(token, NULL, 10);
+                if ( *_rel[axis] >= AXIS_CNT_MAX ) *_rel[axis] = AXIS_CNT_MAX - 1;
             }
             // parse axis id as char
             else
             {
                 switch ( token[0] )
                 {
-                    case 'x': case 'X': *_base[axis] = 0; break;
-                    case 'y': case 'Y': *_base[axis] = 1; break;
-                    case 'z': case 'Z': *_base[axis] = 2; break;
-                    case 'a': case 'A': *_base[axis] = 3; break;
-                    case 'b': case 'B': *_base[axis] = 4; break;
-                    case 'c': case 'C': *_base[axis] = 5; break;
-                    case 'u': case 'U': *_base[axis] = 6; break;
-                    case 'v': case 'V': *_base[axis] = 7; break;
-                    case 'w': case 'W': *_base[axis] = 8; break;
+                    case 'x': case 'X': *_rel[axis] = 0; break;
+                    case 'y': case 'Y': *_rel[axis] = 1; break;
+                    case 'z': case 'Z': *_rel[axis] = 2; break;
+                    case 'a': case 'A': *_rel[axis] = 3; break;
+                    case 'b': case 'B': *_rel[axis] = 4; break;
+                    case 'c': case 'C': *_rel[axis] = 5; break;
+                    case 'u': case 'U': *_rel[axis] = 6; break;
+                    case 'v': case 'V': *_rel[axis] = 7; break;
+                    case 'w': case 'W': *_rel[axis] = 8; break;
                 }
             }
         }
