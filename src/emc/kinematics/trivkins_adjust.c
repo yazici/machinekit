@@ -13,23 +13,22 @@
 
 
 #define VTVERSION VTKINEMATICS_VERSION1
-#define JOINT_CNT_MAX 9
-#define JOINT_STEPS_MAX 255
+#define AXIS_CNT_MAX 9
+#define AXIS_STEPS_MAX 255
 
 MODULE_LICENSE("GPL");
 
 static int comp_id, vtable_id;
 static const char *name = "trivkins_adjust";
-static const char *axis_name_0 = "xyzabcuvw";
-static const char *axis_name_1 = "XYZABCUVW";
+static const char *axis_name = "XYZABCUVW";
 
-hal_float_t **_adjust_data[JOINT_CNT_MAX];
+hal_float_t **_adjust_data[AXIS_CNT_MAX];
 hal_float_t **_step_size;
 hal_u32_t **_steps;
-hal_u32_t **_base_joint;
+hal_u32_t **_base;
 
-static char *base_joint;
-RTAPI_MP_STRING(base_joint, "base joint id, comma separated");
+static char *base;
+RTAPI_MP_STRING(base, "base joint id, comma separated");
 static char *step_size;
 RTAPI_MP_STRING(step_size, "step size, comma separated");
 static char *steps;
@@ -118,7 +117,7 @@ static vtkins_t vtk =
 int rtapi_app_main(void)
 {
     hal_s32_t retval;
-    hal_u32_t joint, step;
+    hal_u32_t axis, step;
     hal_s8_t *data, *token;
 
     // component init
@@ -136,20 +135,20 @@ int rtapi_app_main(void)
     }
 
     // shared memory allocation
-    _steps      = hal_malloc(JOINT_CNT_MAX * sizeof(hal_u32_t*));
-    _step_size  = hal_malloc(JOINT_CNT_MAX * sizeof(hal_float_t*));
-    _base_joint = hal_malloc(JOINT_CNT_MAX * sizeof(hal_u32_t*));
-    if ( !_steps || !_step_size || !_base_joint )
+    _steps      = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
+    _step_size  = hal_malloc(AXIS_CNT_MAX * sizeof(hal_float_t*));
+    _base       = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
+    if ( !_steps || !_step_size || !_base )
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
     }
 
     // export info pins
-    for ( joint = 0, retval = 0; joint < JOINT_CNT_MAX; joint++ )
+    for ( axis = 0, retval = 0; axis < AXIS_CNT_MAX; axis++ )
     {
-        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[joint],      comp_id, "%s.%d.steps",      name, joint);
-        retval += hal_pin_float_newf(HAL_IN,  &_step_size[joint],  comp_id, "%s.%d.step_size",  name, joint);
-        retval += hal_pin_u32_newf  (HAL_IN,  &_base_joint[joint], comp_id, "%s.%d.base_joint", name, joint);
+        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],     comp_id, "%s.%d.steps",     name, axis);
+        retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis], comp_id, "%s.%d.step_size", name, axis);
+        retval += hal_pin_u32_newf  (HAL_IN,  &_base[axis],      comp_id, "%s.%d.base",      name, axis);
     }
     if ( retval )
     {
@@ -160,32 +159,28 @@ int rtapi_app_main(void)
     // parse parameter string
     if ( steps != NULL )
     {
-        for ( joint = 0, data = steps; (token = strtok(data, ",")) != NULL; joint++ )
+        for ( axis = 0, data = steps; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
 
             // get steps count
-            *_steps[joint] = (hal_u32_t) strtoul(token, NULL, 10);
-            if ( *_steps[joint] <= 0 ) continue;
-            if ( *_steps[joint] > JOINT_STEPS_MAX ) *_steps[joint] = JOINT_STEPS_MAX;
+            *_steps[axis] = (hal_u32_t) strtoul(token, NULL, 10);
+            if ( *_steps[axis] <= 0 ) continue;
+            if ( *_steps[axis] > AXIS_STEPS_MAX ) *_steps[axis] = AXIS_STEPS_MAX;
 
             // shared memory allocation
-            _adjust_data[joint] = hal_malloc(*_steps[joint] * sizeof(hal_float_t*));
-            if ( ! *_adjust_data[joint] )
+            _adjust_data[axis] = hal_malloc(*_steps[axis] * sizeof(hal_float_t*));
+            if ( ! *_adjust_data[axis] )
             {
                 rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
                 return -1;
             }
 
             // export step pins
-            for ( step = 0, retval = 0; step < *_steps[joint]; step++ )
+            for ( step = 0, retval = 0; step < *_steps[axis]; step++ )
             {
-                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
-                              comp_id, "%s.%d.s%d", name, joint, step);
-                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
-                              comp_id, "%s.%c.s%d", name, axis_name_0[joint], step);
-                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
-                              comp_id, "%s.%c.s%d", name, axis_name_1[joint], step);
+                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[axis][step],
+                              comp_id, "%s.%c.%d", name, axis_name[axis], step);
             }
             if ( retval )
             {
@@ -198,40 +193,40 @@ int rtapi_app_main(void)
     // parse parameter string
     if ( step_size != NULL )
     {
-        for ( joint = 0, data = step_size; (token = strtok(data, ",")) != NULL; joint++ )
+        for ( axis = 0, data = step_size; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
-            *_step_size[joint] = (hal_float_t) strtod(token, NULL);
+            *_step_size[axis] = (hal_float_t) strtod(token, NULL);
         }
     }
 
     // parse parameter string
-    if ( base_joint != NULL )
+    if ( base != NULL )
     {
-        for ( joint = 0, data = base_joint; (token = strtok(data, ",")) != NULL; joint++ )
+        for ( axis = 0, data = base; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
 
-            // parse joint id as number
+            // parse axis id as number
             if ( token[0] >= '0' && token[0] <= '9' )
             {
-                *_base_joint[joint] = (hal_u32_t) strtol(token, NULL, 10);
-                if ( *_base_joint[joint] >= JOINT_CNT_MAX ) *_base_joint[joint] = JOINT_CNT_MAX - 1;
+                *_base[axis] = (hal_u32_t) strtol(token, NULL, 10);
+                if ( *_base[axis] >= AXIS_CNT_MAX ) *_base[axis] = AXIS_CNT_MAX - 1;
             }
-            // parse joint id as char
+            // parse axis id as char
             else
             {
                 switch ( token[0] )
                 {
-                    case 'x': case 'X': *_base_joint[joint] = 0; break;
-                    case 'y': case 'Y': *_base_joint[joint] = 1; break;
-                    case 'z': case 'Z': *_base_joint[joint] = 2; break;
-                    case 'a': case 'A': *_base_joint[joint] = 3; break;
-                    case 'b': case 'B': *_base_joint[joint] = 4; break;
-                    case 'c': case 'C': *_base_joint[joint] = 5; break;
-                    case 'u': case 'U': *_base_joint[joint] = 6; break;
-                    case 'v': case 'V': *_base_joint[joint] = 7; break;
-                    case 'w': case 'W': *_base_joint[joint] = 8; break;
+                    case 'x': case 'X': *_base[axis] = 0; break;
+                    case 'y': case 'Y': *_base[axis] = 1; break;
+                    case 'z': case 'Z': *_base[axis] = 2; break;
+                    case 'a': case 'A': *_base[axis] = 3; break;
+                    case 'b': case 'B': *_base[axis] = 4; break;
+                    case 'c': case 'C': *_base[axis] = 5; break;
+                    case 'u': case 'U': *_base[axis] = 6; break;
+                    case 'v': case 'V': *_base[axis] = 7; break;
+                    case 'w': case 'W': *_base[axis] = 8; break;
                 }
             }
         }
