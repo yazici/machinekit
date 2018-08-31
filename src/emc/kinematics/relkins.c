@@ -20,7 +20,7 @@
 MODULE_LICENSE("GPL");
 
 static int comp_id, vtable_id;
-static const char *name = "trivkins_adjust";
+static const char *name = "relkins";
 static const char *axis_name = "XYZABCUVW";
 
 hal_float_t **_adjust_data[AXIS_CNT_MAX];
