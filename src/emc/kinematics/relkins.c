@@ -53,15 +53,32 @@ kinematicsForward
     KINEMATICS_INVERSE_FLAGS *          iflags
 )
 {
-    pos->tran.x = joints[0];
-    pos->tran.y = joints[1];
-    pos->tran.z = joints[2];
-    pos->a = joints[3];
-    pos->b = joints[4];
-    pos->c = joints[5];
-    pos->u = joints[6];
-    pos->v = joints[7];
-    pos->w = joints[8];
+    static hal_u32_t step, axis;
+    static hal_float_t adj;
+    hal_float_t *axes[AXIS_CNT_MAX] =
+    {
+        &(pos->tran.x), &(pos->tran.y), &(pos->tran.z),
+        &(pos->a), &(pos->b), &(pos->c),
+        &(pos->u), &(pos->v), &(pos->w)
+    };
+
+    for ( axis = AXIS_CNT_MAX; axis--; )
+    {
+        if ( !(*_steps[axis]) )
+        {
+            *axes[axis] = joints[axis];
+            continue;
+        }
+
+        step = (hal_u32_t) (joints[*_rel[axis]] / (*_step_size[axis]));
+
+        adj = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
+        adj -= (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+        adj *= (joints[*_rel[axis]] - (*_step_size[axis] * (hal_float_t)step)) /
+               (*_step_size[axis]);
+
+        *axes[axis] = joints[axis] + adj;
+    }
 
     return 0;
 }
@@ -75,15 +92,32 @@ kinematicsInverse
     KINEMATICS_FORWARD_FLAGS *          fflags
 )
 {
-    joints[0] = pos->tran.x;
-    joints[1] = pos->tran.y;
-    joints[2] = pos->tran.z;
-    joints[3] = pos->a;
-    joints[4] = pos->b;
-    joints[5] = pos->c;
-    joints[6] = pos->u;
-    joints[7] = pos->v;
-    joints[8] = pos->w;
+    static hal_u32_t step, axis;
+    static hal_float_t adj;
+    const hal_float_t *axes[AXIS_CNT_MAX] =
+    {
+        &(pos->tran.x), &(pos->tran.y), &(pos->tran.z),
+        &(pos->a), &(pos->b), &(pos->c),
+        &(pos->u), &(pos->v), &(pos->w)
+    };
+
+    for ( axis = AXIS_CNT_MAX; axis--; )
+    {
+        if ( !(*_steps[axis]) )
+        {
+            joints[axis] = *axes[axis];
+            continue;
+        }
+
+        step = (hal_u32_t) (*axes[*_rel[axis]] / (*_step_size[axis]));
+
+        adj = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
+        adj -= (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+        adj *= (*axes[*_rel[axis]] - (*_step_size[axis] * (hal_float_t)step)) /
+               (*_step_size[axis]);
+
+        joints[axis] = *axes[axis] - adj;
+    }
 
     return 0;
 }
