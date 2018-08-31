@@ -1,7 +1,11 @@
 /********************************************************************
-* Description: trivkins_adjust.c
+* Description: relkins.c
+*
 *   Trivial kinematics for 3 axis Cartesian machine
 *   with position adjustment
+*
+* Author: Mikhail Vydrenko (mikhail@vydrenko.ru)
+*
 ********************************************************************/
 
 #include "kinematics.h"     /* these decls */
@@ -17,6 +21,8 @@
 #define AXIS_CNT_MAX 9
 #define AXIS_STEPS_MAX 255
 
+MODULE_AUTHOR("Mikhail Vydrenko");
+MODULE_DESCRIPTION("Trivial kinematics with position adjustment");
 MODULE_LICENSE("GPL");
 
 static int comp_id, vtable_id;
@@ -29,9 +35,9 @@ hal_u32_t **_steps;
 hal_u32_t **_rel;
 
 static char *rel;
-RTAPI_MP_STRING(rel, "rel joint id, comma separated");
+RTAPI_MP_STRING(rel, "related axis name/ID, comma separated");
 static char *step_size;
-RTAPI_MP_STRING(step_size, "step size, comma separated");
+RTAPI_MP_STRING(step_size, "step size in units, comma separated");
 static char *steps;
 RTAPI_MP_STRING(steps, "steps count, comma separated");
 
