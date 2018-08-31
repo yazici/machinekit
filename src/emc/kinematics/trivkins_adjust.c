@@ -145,9 +145,9 @@ int rtapi_app_main(void)
     // export info pins
     for ( joint = 0, retval = 0; joint < JOINT_CNT_MAX; joint++ )
     {
-        retval += hal_pin_u32_newf  (HAL_OUT, _steps[joint],      comp_id, "%s.%d.steps",      name, joint);
-        retval += hal_pin_float_newf(HAL_IN,  _step_size[joint],  comp_id, "%s.%d.step_size",  name, joint);
-        retval += hal_pin_u32_newf  (HAL_IN,  _base_joint[joint], comp_id, "%s.%d.base_joint", name, joint);
+        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[joint],      comp_id, "%s.%d.steps",      name, joint);
+        retval += hal_pin_float_newf(HAL_IN,  &_step_size[joint],  comp_id, "%s.%d.step_size",  name, joint);
+        retval += hal_pin_u32_newf  (HAL_IN,  &_base_joint[joint], comp_id, "%s.%d.base_joint", name, joint);
     }
     if ( retval )
     {
@@ -163,22 +163,22 @@ int rtapi_app_main(void)
             if ( data != NULL ) data = NULL;
 
             // get steps count
-            _steps[joint] = (hal_u32_t) strtoul(token, NULL, 10);
-            if ( _steps[joint] <= 0 ) continue;
-            if ( _steps[joint] > JOINT_STEPS_MAX ) _steps[joint] = JOINT_STEPS_MAX;
+            *_steps[joint] = (hal_u32_t) strtoul(token, NULL, 10);
+            if ( *_steps[joint] <= 0 ) continue;
+            if ( *_steps[joint] > JOINT_STEPS_MAX ) *_steps[joint] = JOINT_STEPS_MAX;
 
             // shared memory allocation
-            _adjust_data[joint] = hal_malloc(_steps[joint] * sizeof(hal_float_t*));
-            if ( !_adjust_data[joint] )
+            _adjust_data[joint] = hal_malloc(*_steps[joint] * sizeof(hal_float_t*));
+            if ( ! *_adjust_data[joint] )
             {
                 rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
                 return -1;
             }
 
             // export step pins
-            for ( step = 0, retval = 0; step < _steps[joint]; step++ )
+            for ( step = 0, retval = 0; step < *_steps[joint]; step++ )
             {
-                retval += hal_pin_float_newf(HAL_IN, _adjust_data[joint][step],
+                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[joint][step],
                               comp_id, "%s.%d.s%d", name, joint, step);
             }
             if ( retval )
@@ -195,7 +195,7 @@ int rtapi_app_main(void)
         for ( joint = 0, data = step_size; (token = strtok(data, ",")) != NULL; joint++ )
         {
             if ( data != NULL ) data = NULL;
-            _step_size[joint] = (hal_float_t) strtod(token, NULL);
+            *_step_size[joint] = (hal_float_t) strtod(token, NULL);
         }
     }
 
@@ -209,23 +209,23 @@ int rtapi_app_main(void)
             // parse joint id as number
             if ( token[0] >= '0' && token[0] <= '9' )
             {
-                _base_joint[joint] = (hal_u32_t) strtol(token, NULL, 10);
-                if ( _base_joint[joint] >= JOINT_CNT_MAX ) _base_joint[joint] = JOINT_CNT_MAX - 1;
+                *_base_joint[joint] = (hal_u32_t) strtol(token, NULL, 10);
+                if ( *_base_joint[joint] >= JOINT_CNT_MAX ) *_base_joint[joint] = JOINT_CNT_MAX - 1;
             }
             // parse joint id as char
             else
             {
                 switch ( token[0] )
                 {
-                    case 'x': case 'X': _base_joint[joint] = 0; break;
-                    case 'y': case 'Y': _base_joint[joint] = 1; break;
-                    case 'z': case 'Z': _base_joint[joint] = 2; break;
-                    case 'a': case 'A': _base_joint[joint] = 3; break;
-                    case 'b': case 'B': _base_joint[joint] = 4; break;
-                    case 'c': case 'C': _base_joint[joint] = 5; break;
-                    case 'u': case 'U': _base_joint[joint] = 6; break;
-                    case 'v': case 'V': _base_joint[joint] = 7; break;
-                    case 'w': case 'W': _base_joint[joint] = 8; break;
+                    case 'x': case 'X': *_base_joint[joint] = 0; break;
+                    case 'y': case 'Y': *_base_joint[joint] = 1; break;
+                    case 'z': case 'Z': *_base_joint[joint] = 2; break;
+                    case 'a': case 'A': *_base_joint[joint] = 3; break;
+                    case 'b': case 'B': *_base_joint[joint] = 4; break;
+                    case 'c': case 'C': *_base_joint[joint] = 5; break;
+                    case 'u': case 'U': *_base_joint[joint] = 6; break;
+                    case 'v': case 'V': *_base_joint[joint] = 7; break;
+                    case 'w': case 'W': *_base_joint[joint] = 8; break;
                 }
             }
         }
