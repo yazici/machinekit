@@ -10,29 +10,28 @@
 #include "rtapi_app.h"      /* RTAPI realtime module decls */
 #include "hal.h"
 
-#include <string.h>
-#include <stdint.h>
-
-#include <linux/fs.h>
-#include <asm/segment.h>
-#include <asm/uaccess.h>
-#include <linux/buffer_head.h>
-
 
 
 #define VTVERSION VTKINEMATICS_VERSION1
+#define JOINT_CNT_MAX 9
+#define JOINT_STEPS_MAX 255
 
 MODULE_LICENSE("GPL");
 
 static int comp_id, vtable_id;
 static const char *name = "trivkins_adjust";
 
-static char *x_adj_file;
-RTAPI_MP_STRING(x_adj_file, "X axis adjustment file path");
-static char *y_adj_file;
-RTAPI_MP_STRING(y_adj_file, "Y axis adjustment file path");
-static char *z_adj_file;
-RTAPI_MP_STRING(z_adj_file, "Z axis adjustment file path");
+hal_float_t **_adjust_data[JOINT_CNT_MAX];
+hal_float_t **_step_size;
+hal_u32_t **_steps;
+hal_u32_t **_base_joint;
+
+static char *base_joint;
+RTAPI_MP_STRING(base_joint, "base joint id, comma separated");
+static char *step_size;
+RTAPI_MP_STRING(step_size, "step size, comma separated");
+static char *steps;
+RTAPI_MP_STRING(steps, "steps count, comma separated");
 
 
 
@@ -103,9 +102,6 @@ kinematicsType(void)
     return KINEMATICS_IDENTITY;
 }
 
-
-
-
 static vtkins_t vtk =
 {
     .kinematicsForward = kinematicsForward,
@@ -117,82 +113,122 @@ static vtkins_t vtk =
 
 
 
-struct file *file_open(const char *path, int flags, int rights)
-{
-    struct file *filp = NULL;
-    mm_segment_t oldfs;
-    int err = 0;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-    filp = filp_open(path, flags, rights);
-    set_fs(oldfs);
-    if (IS_ERR(filp)) {
-        err = PTR_ERR(filp);
-        return NULL;
-    }
-    return filp;
-}
-
-void file_close(struct file *file)
-{
-    filp_close(file, NULL);
-}
-
-int file_read(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size)
-{
-    mm_segment_t oldfs;
-    int ret;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-
-    ret = vfs_read(file, data, size, &offset);
-
-    set_fs(oldfs);
-    return ret;
-}
-
-int file_write(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size)
-{
-    mm_segment_t oldfs;
-    int ret;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-
-    ret = vfs_write(file, data, size, &offset);
-
-    set_fs(oldfs);
-    return ret;
-}
-
-int file_sync(struct file *file)
-{
-    vfs_fsync(file, 0);
-    return 0;
-}
-
-
-
-
 int rtapi_app_main(void)
 {
+    hal_s32_t retval;
+    hal_u32_t joint, step;
+    hal_s8_t *data, *token;
+
+    // component init
     comp_id = hal_init(name);
     if ( comp_id < 0 ) return -1;
 
+    // export kinematics table
     vtable_id = hal_export_vtable(name, VTVERSION, &vtk, comp_id);
     if ( vtable_id < 0 )
     {
-        rtapi_print_msg( RTAPI_MSG_ERR,
+        rtapi_print_msg(RTAPI_MSG_ERR,
             "%s: ERROR: hal_export_vtable(%s,%d,%p) failed: %d\n",
-            name, name, VTVERSION, &vtk, vtable_id );
+            name, name, VTVERSION, &vtk, vtable_id);
         return -1;
     }
 
-    if (x_adj_file != NULL)
+    // shared memory allocation
+    _steps      = hal_malloc(JOINT_CNT_MAX * sizeof(hal_u32_t*));
+    _step_size  = hal_malloc(JOINT_CNT_MAX * sizeof(hal_float_t*));
+    _base_joint = hal_malloc(JOINT_CNT_MAX * sizeof(hal_u32_t*));
+    if ( !_steps || !_step_size || !_base_joint )
     {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
+    }
 
+    // export info pins
+    for ( joint = 0, retval = 0; joint < JOINT_CNT_MAX; joint++ )
+    {
+        retval += hal_pin_u32_newf  (HAL_OUT, _steps[joint],      comp_id, "%s.%d.steps",      name, joint);
+        retval += hal_pin_float_newf(HAL_IN,  _step_size[joint],  comp_id, "%s.%d.step_size",  name, joint);
+        retval += hal_pin_u32_newf  (HAL_IN,  _base_joint[joint], comp_id, "%s.%d.base_joint", name, joint);
+    }
+    if ( retval )
+    {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL pins export failed \n", name);
+        return -1;
+    }
+
+    // parse parameter string
+    if ( steps != NULL )
+    {
+        for ( joint = 0, data = steps; (token = strtok(data, ",")) != NULL; joint++ )
+        {
+            if ( data != NULL ) data = NULL;
+
+            // get steps count
+            _steps[joint] = (hal_u32_t) strtoul(token, NULL, 10);
+            if ( _steps[joint] <= 0 ) continue;
+            if ( _steps[joint] > JOINT_STEPS_MAX ) _steps[joint] = JOINT_STEPS_MAX;
+
+            // shared memory allocation
+            _adjust_data[joint] = hal_malloc(_steps[joint] * sizeof(hal_float_t*));
+            if ( !_adjust_data[joint] )
+            {
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: hal_malloc() failed \n", name);
+                return -1;
+            }
+
+            // export step pins
+            for ( step = 0, retval = 0; step < _steps[joint]; step++ )
+            {
+                retval += hal_pin_float_newf(HAL_IN, _adjust_data[joint][step],
+                              comp_id, "%s.%d.s%d", name, joint, step);
+            }
+            if ( retval )
+            {
+                rtapi_print_msg(RTAPI_MSG_ERR, "%s: HAL pins export failed \n", name);
+                return -1;
+            }
+        }
+    }
+
+    // parse parameter string
+    if ( step_size != NULL )
+    {
+        for ( joint = 0, data = step_size; (token = strtok(data, ",")) != NULL; joint++ )
+        {
+            if ( data != NULL ) data = NULL;
+            _step_size[joint] = (hal_float_t) strtod(token, NULL);
+        }
+    }
+
+    // parse parameter string
+    if ( base_joint != NULL )
+    {
+        for ( joint = 0, data = base_joint; (token = strtok(data, ",")) != NULL; joint++ )
+        {
+            if ( data != NULL ) data = NULL;
+
+            // parse joint id as number
+            if ( token[0] >= '0' && token[0] <= '9' )
+            {
+                _base_joint[joint] = (hal_u32_t) strtol(token, NULL, 10);
+                if ( _base_joint[joint] >= JOINT_CNT_MAX ) _base_joint[joint] = JOINT_CNT_MAX - 1;
+            }
+            // parse joint id as char
+            else
+            {
+                switch ( token[0] )
+                {
+                    case 'x': case 'X': _base_joint[joint] = 0; break;
+                    case 'y': case 'Y': _base_joint[joint] = 1; break;
+                    case 'z': case 'Z': _base_joint[joint] = 2; break;
+                    case 'a': case 'A': _base_joint[joint] = 3; break;
+                    case 'b': case 'B': _base_joint[joint] = 4; break;
+                    case 'c': case 'C': _base_joint[joint] = 5; break;
+                    case 'u': case 'U': _base_joint[joint] = 6; break;
+                    case 'v': case 'V': _base_joint[joint] = 7; break;
+                    case 'w': case 'W': _base_joint[joint] = 8; break;
+                }
+            }
+        }
     }
 
     hal_ready(comp_id);
