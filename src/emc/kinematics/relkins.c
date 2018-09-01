@@ -29,6 +29,8 @@ static int comp_id, vtable_id;
 static const char *name = "relkins";
 static const char *axis_name = "XYZABCUVW";
 
+static hal_bit_t axis_adj[AXIS_CNT_MAX] = {0};
+
 hal_float_t **_adjust_data[AXIS_CNT_MAX];
 hal_float_t **_step_size;
 hal_u32_t **_steps;
@@ -54,7 +56,7 @@ kinematicsForward
 )
 {
     static hal_u32_t step, axis;
-    static hal_float_t adj;
+    static hal_float_t adj, adj_0, adj_1;
     hal_float_t *axes[AXIS_CNT_MAX] =
     {
         &(pos->tran.x), &(pos->tran.y), &(pos->tran.z),
@@ -64,18 +66,20 @@ kinematicsForward
 
     for ( axis = AXIS_CNT_MAX; axis--; )
     {
-        if ( !(*_steps[axis]) )
+        if ( !axis_adj[axis] )
         {
             *axes[axis] = joints[axis];
             continue;
         }
 
-        step = (hal_u32_t) (joints[*_rel[axis]] / (*_step_size[axis]));
+        step = (hal_u32_t) ( joints[*_rel[axis]] / (*_step_size[axis]) );
 
-        adj = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
-        adj -= (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
-        adj *= (joints[*_rel[axis]] - (*_step_size[axis] * (hal_float_t)step)) /
-               (*_step_size[axis]);
+        adj_0 = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
+        adj_1 = (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+
+        adj = adj_0
+              + ( adj_1 - adj_0 )
+              * ( joints[*_rel[axis]] - (*_step_size[axis]) * ((hal_float_t)step) );
 
         *axes[axis] = joints[axis] + adj;
     }
@@ -93,7 +97,7 @@ kinematicsInverse
 )
 {
     static hal_u32_t step, axis;
-    static hal_float_t adj;
+    static hal_float_t adj, adj_0, adj_1;
     const hal_float_t *axes[AXIS_CNT_MAX] =
     {
         &(pos->tran.x), &(pos->tran.y), &(pos->tran.z),
@@ -103,18 +107,20 @@ kinematicsInverse
 
     for ( axis = AXIS_CNT_MAX; axis--; )
     {
-        if ( !(*_steps[axis]) )
+        if ( !axis_adj[axis] )
         {
             joints[axis] = *axes[axis];
             continue;
         }
 
-        step = (hal_u32_t) (*axes[*_rel[axis]] / (*_step_size[axis]));
+        step = (hal_u32_t) ( *axes[*_rel[axis]] / (*_step_size[axis]) );
 
-        adj = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
-        adj -= (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
-        adj *= (*axes[*_rel[axis]] - (*_step_size[axis] * (hal_float_t)step)) /
-               (*_step_size[axis]);
+        adj_0 = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
+        adj_1 = (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+
+        adj = adj_0
+              + ( adj_1 - adj_0 )
+              * ( *axes[*_rel[axis]] - (*_step_size[axis]) * ((hal_float_t)step) );
 
         joints[axis] = *axes[axis] - adj;
     }
@@ -221,7 +227,8 @@ int rtapi_app_main(void)
     // export info pins
     for ( axis = 0, retval = 0; axis < AXIS_CNT_MAX; axis++ )
     {
-        if ( !steps_cnt[axis] ) continue;
+        axis_adj[axis] = steps_cnt[axis] ? 1 : 0;
+        if ( !axis_adj[axis] ) continue;
 
         retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],     comp_id, "%s.%c.steps",     name, axis_name[axis]);
         retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis], comp_id, "%s.%c.step_size", name, axis_name[axis]);
@@ -241,7 +248,7 @@ int rtapi_app_main(void)
         for ( axis = 0, data = step_size; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
-            if ( !steps_cnt[axis] ) continue;
+            if ( !axis_adj[axis] ) continue;
 
             *_step_size[axis] = (hal_float_t) strtod(token, NULL);
         }
@@ -253,7 +260,7 @@ int rtapi_app_main(void)
         for ( axis = 0, data = rel; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
-            if ( !steps_cnt[axis] ) continue;
+            if ( !axis_adj[axis] ) continue;
 
             // parse axis id as number
             if ( token[0] >= '0' && token[0] <= '9' )
