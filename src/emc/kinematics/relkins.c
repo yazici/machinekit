@@ -18,6 +18,8 @@
 
 
 #define VTVERSION VTKINEMATICS_VERSION1
+#define RELKINS_FWD 1
+#define RELKINS_REV 1
 #define AXIS_CNT_MAX 9
 #define AXIS_STEPS_MAX 255
 
@@ -31,17 +33,20 @@ static const char *axis_name = "XYZABCUVW";
 
 static hal_bit_t axis_adj[AXIS_CNT_MAX] = {0};
 
-hal_float_t **_adjust_data[AXIS_CNT_MAX];
-hal_float_t **_step_size;
-hal_u32_t **_steps;
-hal_u32_t **_rel;
+hal_float_t **  _adj[AXIS_CNT_MAX];
+hal_u32_t **    _steps;
+hal_float_t **  _step_size;
+hal_float_t **  _start_from;
+hal_u32_t **    _rel_axis;
 
-static char *rel;
-RTAPI_MP_STRING(rel, "related axis name/ID, comma separated");
-static char *step_size;
-RTAPI_MP_STRING(step_size, "step size in units, comma separated");
 static char *steps;
 RTAPI_MP_STRING(steps, "steps count, comma separated");
+static char *step_size;
+RTAPI_MP_STRING(step_size, "step size in units, comma separated");
+static char *start_from;
+RTAPI_MP_STRING(start_from, "start position offset in units, comma separated");
+static char *rel_axis;
+RTAPI_MP_STRING(rel_axis, "related axis name/ID, comma separated");
 
 
 
@@ -55,7 +60,8 @@ kinematicsForward
     KINEMATICS_INVERSE_FLAGS *          iflags
 )
 {
-    static hal_u32_t step, axis;
+#if RELKINS_FWD
+    static hal_u32_t step_0, step_1, axis;
     static hal_float_t adj, adj_0, adj_1;
     hal_float_t *axes[AXIS_CNT_MAX] =
     {
@@ -66,24 +72,37 @@ kinematicsForward
 
     for ( axis = AXIS_CNT_MAX; axis--; )
     {
-        if ( !axis_adj[axis] )
+        if ( !axis_adj[axis] || joints[*_rel_axis[axis]] < 1e-20 )
         {
             *axes[axis] = joints[axis];
             continue;
         }
 
-        step = (hal_u32_t) ( joints[*_rel[axis]] / (*_step_size[axis]) );
+        if ( *_step_size[axis] < 1e-20 ) *_step_size[axis] = 1.0;
 
-        adj_0 = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
-        adj_1 = (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+        step_0 = (hal_u32_t) ( joints[*_rel_axis[axis]] / (*_step_size[axis]) );
+        step_1 = step_0 + 1;
 
-        adj = adj_0
-              + ( adj_1 - adj_0 )
-              * ( joints[*_rel[axis]] - (*_step_size[axis]) * ((hal_float_t)step) );
+        adj_0 = step_0 >= 0 && step_0 < *_steps[axis] ? *_adj[axis][step_0] : 0.0;
+        adj_1 = step_1 >= 0 && step_1 < *_steps[axis] ? *_adj[axis][step_1] : 0.0;
+
+        adj =   adj_0
+              + (adj_1 - adj_0)
+              * (joints[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0));
 
         *axes[axis] = joints[axis] + adj;
     }
-
+#else
+    pos->tran.x = joints[0];
+    pos->tran.y = joints[1];
+    pos->tran.z = joints[2];
+    pos->a = joints[3];
+    pos->b = joints[4];
+    pos->c = joints[5];
+    pos->u = joints[6];
+    pos->v = joints[7];
+    pos->w = joints[8];
+#endif
     return 0;
 }
 
@@ -96,7 +115,8 @@ kinematicsInverse
     KINEMATICS_FORWARD_FLAGS *          fflags
 )
 {
-    static hal_u32_t step, axis;
+#if RELKINS_REV
+    static hal_u32_t step_0, step_1, axis;
     static hal_float_t adj, adj_0, adj_1;
     const hal_float_t *axes[AXIS_CNT_MAX] =
     {
@@ -107,24 +127,37 @@ kinematicsInverse
 
     for ( axis = AXIS_CNT_MAX; axis--; )
     {
-        if ( !axis_adj[axis] )
+        if ( !axis_adj[axis] || *axes[*_rel_axis[axis]] < 1e-20 )
         {
             joints[axis] = *axes[axis];
             continue;
         }
 
-        step = (hal_u32_t) ( *axes[*_rel[axis]] / (*_step_size[axis]) );
+        if ( *_step_size[axis] < 1e-20 ) *_step_size[axis] = 1.0;
 
-        adj_0 = step < *_steps[axis] ? *_adjust_data[axis][step] : 0.0;
-        adj_1 = (step+1) < *_steps[axis] ? *_adjust_data[axis][step+1] : 0.0;
+        step_0 = (hal_u32_t) ( *axes[*_rel_axis[axis]] / (*_step_size[axis]) );
+        step_1 = step_0 + 1;
 
-        adj = adj_0
-              + ( adj_1 - adj_0 )
-              * ( *axes[*_rel[axis]] - (*_step_size[axis]) * ((hal_float_t)step) );
+        adj_0 = step_0 >= 0 && step_0 < *_steps[axis] ? *_adj[axis][step_0] : 0.0;
+        adj_1 = step_1 >= 0 && step_1 < *_steps[axis] ? *_adj[axis][step_1] : 0.0;
+
+        adj =   adj_0
+              + (adj_1 - adj_0)
+              * (*axes[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0));
 
         joints[axis] = *axes[axis] - adj;
     }
-
+#else
+    joints[0] = pos->tran.x;
+    joints[1] = pos->tran.y;
+    joints[2] = pos->tran.z;
+    joints[3] = pos->a;
+    joints[4] = pos->b;
+    joints[5] = pos->c;
+    joints[6] = pos->u;
+    joints[7] = pos->v;
+    joints[8] = pos->w;
+#endif
     return 0;
 }
 
@@ -154,7 +187,7 @@ static vtkins_t vtk =
 {
     .kinematicsForward = kinematicsForward,
     .kinematicsInverse  = kinematicsInverse,
-    // .kinematicsHome = kinematicsHome,
+//  .kinematicsHome = kinematicsHome,
     .kinematicsType = kinematicsType
 };
 
@@ -184,8 +217,9 @@ int rtapi_app_main(void)
     // shared memory allocation
     _steps      = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
     _step_size  = hal_malloc(AXIS_CNT_MAX * sizeof(hal_float_t*));
-    _rel        = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
-    if ( !_steps || !_step_size || !_rel )
+    _start_from = hal_malloc(AXIS_CNT_MAX * sizeof(hal_float_t*));
+    _rel_axis   = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
+    if ( !_steps || !_step_size || !_rel_axis || !_start_from )
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: info pins hal_malloc() failed \n", name);
     }
@@ -203,8 +237,8 @@ int rtapi_app_main(void)
             if ( steps_cnt[axis] > AXIS_STEPS_MAX ) steps_cnt[axis] = AXIS_STEPS_MAX;
 
             // shared memory allocation
-            _adjust_data[axis] = hal_malloc(steps_cnt[axis] * sizeof(hal_float_t*));
-            if ( !_adjust_data[axis] )
+            _adj[axis] = hal_malloc(steps_cnt[axis] * sizeof(hal_float_t*));
+            if ( !_adj[axis] )
             {
                 rtapi_print_msg(RTAPI_MSG_ERR, "%s: step pins hal_malloc() failed \n", name);
                 return -1;
@@ -213,7 +247,7 @@ int rtapi_app_main(void)
             // export step pins
             for ( step = 0, retval = 0; step < steps_cnt[axis]; step++ )
             {
-                retval += hal_pin_float_newf(HAL_IN, &_adjust_data[axis][step],
+                retval += hal_pin_float_newf(HAL_IN, &_adj[axis][step],
                               comp_id, "%s.%c.%d", name, axis_name[axis], step);
             }
             if ( retval )
@@ -230,9 +264,10 @@ int rtapi_app_main(void)
         axis_adj[axis] = steps_cnt[axis] ? 1 : 0;
         if ( !axis_adj[axis] ) continue;
 
-        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],     comp_id, "%s.%c.steps",     name, axis_name[axis]);
-        retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis], comp_id, "%s.%c.step_size", name, axis_name[axis]);
-        retval += hal_pin_u32_newf  (HAL_IN,  &_rel[axis],       comp_id, "%s.%c.rel",      name, axis_name[axis]);
+        retval += hal_pin_u32_newf  (HAL_OUT, &_steps[axis],      comp_id, "%s.%c.steps",      name, axis_name[axis]);
+        retval += hal_pin_float_newf(HAL_IN,  &_step_size[axis],  comp_id, "%s.%c.step_size",  name, axis_name[axis]);
+        retval += hal_pin_float_newf(HAL_IN,  &_start_from[axis], comp_id, "%s.%c.start_from", name, axis_name[axis]);
+        retval += hal_pin_u32_newf  (HAL_IN,  &_rel_axis[axis],   comp_id, "%s.%c.rel_axis",   name, axis_name[axis]);
 
         *_steps[axis] = steps_cnt[axis];
     }
@@ -255,9 +290,21 @@ int rtapi_app_main(void)
     }
 
     // parse parameter string
-    if ( rel != NULL )
+    if ( start_from != NULL )
     {
-        for ( axis = 0, data = rel; (token = strtok(data, ",")) != NULL; axis++ )
+        for ( axis = 0, data = start_from; (token = strtok(data, ",")) != NULL; axis++ )
+        {
+            if ( data != NULL ) data = NULL;
+            if ( !axis_adj[axis] ) continue;
+
+            *_start_from[axis] = (hal_float_t) strtod(token, NULL);
+        }
+    }
+
+    // parse parameter string
+    if ( rel_axis != NULL )
+    {
+        for ( axis = 0, data = rel_axis; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
             if ( !axis_adj[axis] ) continue;
@@ -265,23 +312,23 @@ int rtapi_app_main(void)
             // parse axis id as number
             if ( token[0] >= '0' && token[0] <= '9' )
             {
-                *_rel[axis] = (hal_u32_t) strtol(token, NULL, 10);
-                if ( *_rel[axis] >= AXIS_CNT_MAX ) *_rel[axis] = AXIS_CNT_MAX - 1;
+                *_rel_axis[axis] = (hal_u32_t) strtol(token, NULL, 10);
+                if ( *_rel_axis[axis] >= AXIS_CNT_MAX ) *_rel_axis[axis] = AXIS_CNT_MAX - 1;
             }
             // parse axis id as char
             else
             {
                 switch ( token[0] )
                 {
-                    case 'x': case 'X': *_rel[axis] = 0; break;
-                    case 'y': case 'Y': *_rel[axis] = 1; break;
-                    case 'z': case 'Z': *_rel[axis] = 2; break;
-                    case 'a': case 'A': *_rel[axis] = 3; break;
-                    case 'b': case 'B': *_rel[axis] = 4; break;
-                    case 'c': case 'C': *_rel[axis] = 5; break;
-                    case 'u': case 'U': *_rel[axis] = 6; break;
-                    case 'v': case 'V': *_rel[axis] = 7; break;
-                    case 'w': case 'W': *_rel[axis] = 8; break;
+                    case 'x': case 'X': *_rel_axis[axis] = 0; break;
+                    case 'y': case 'Y': *_rel_axis[axis] = 1; break;
+                    case 'z': case 'Z': *_rel_axis[axis] = 2; break;
+                    case 'a': case 'A': *_rel_axis[axis] = 3; break;
+                    case 'b': case 'B': *_rel_axis[axis] = 4; break;
+                    case 'c': case 'C': *_rel_axis[axis] = 5; break;
+                    case 'u': case 'U': *_rel_axis[axis] = 6; break;
+                    case 'v': case 'V': *_rel_axis[axis] = 7; break;
+                    case 'w': case 'W': *_rel_axis[axis] = 8; break;
                 }
             }
         }
@@ -290,6 +337,9 @@ int rtapi_app_main(void)
     hal_ready(comp_id);
     return 0;
 }
+
+
+
 
 void rtapi_app_exit(void)
 {
