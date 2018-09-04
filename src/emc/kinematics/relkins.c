@@ -5,29 +5,44 @@
 *   with position adjustment
 *
 * Author: Mikhail Vydrenko (mikhail@vydrenko.ru)
-*
 ********************************************************************/
 
-#include "kinematics.h"     /* these decls */
+#define FOR_MACHINEKIT 1
 
+#include "kinematics.h"     /* these decls */
 #include "rtapi.h"          /* RTAPI realtime OS API */
 #include "rtapi_app.h"      /* RTAPI realtime module decls */
 #include "hal.h"
+
+#if FOR_MACHINEKIT
 #include <stdlib.h>
+#else
+#include "motion.h"
+#include "rtapi_math.h"
+#include "rtapi_string.h"
+#include <linux/kernel.h>
+#endif
 
 
 
-#define VTVERSION VTKINEMATICS_VERSION1
+
 #define RELKINS_FWD 1
 #define RELKINS_REV 1
 #define AXIS_CNT_MAX 9
 #define AXIS_STEPS_MAX 255
 
+#if FOR_MACHINEKIT
+#define VTVERSION VTKINEMATICS_VERSION1
+#endif
+
 MODULE_AUTHOR("Mikhail Vydrenko");
 MODULE_DESCRIPTION("Trivial kinematics with position adjustment");
 MODULE_LICENSE("GPL");
 
-static int comp_id, vtable_id;
+#if FOR_MACHINEKIT
+static int vtable_id;
+#endif
+static int comp_id;
 static const char *name = "relkins";
 static const char *axis_name = "XYZABCUVW";
 
@@ -183,6 +198,7 @@ kinematicsType(void)
     return KINEMATICS_IDENTITY;
 }
 
+#if FOR_MACHINEKIT
 static vtkins_t vtk =
 {
     .kinematicsForward = kinematicsForward,
@@ -190,6 +206,11 @@ static vtkins_t vtk =
 //  .kinematicsHome = kinematicsHome,
     .kinematicsType = kinematicsType
 };
+#else
+EXPORT_SYMBOL(kinematicsType);
+EXPORT_SYMBOL(kinematicsForward);
+EXPORT_SYMBOL(kinematicsInverse);
+#endif
 
 
 
@@ -197,13 +218,17 @@ static vtkins_t vtk =
 int rtapi_app_main(void)
 {
     hal_s32_t retval;
-    hal_u32_t axis, step, steps_cnt[AXIS_CNT_MAX] = {0};
-    hal_s8_t *data, *token;
+#if !FOR_MACHINEKIT
+    int32_t n;
+#endif
+    uint32_t axis, step, steps_cnt[AXIS_CNT_MAX] = {0};
+    char *data, *token;
 
     // component init
     comp_id = hal_init(name);
     if ( comp_id < 0 ) return -1;
 
+#if FOR_MACHINEKIT
     // export kinematics table
     vtable_id = hal_export_vtable(name, VTVERSION, &vtk, comp_id);
     if ( vtable_id < 0 )
@@ -213,6 +238,7 @@ int rtapi_app_main(void)
             name, name, VTVERSION, &vtk, vtable_id);
         return -1;
     }
+#endif
 
     // shared memory allocation
     _steps      = hal_malloc(AXIS_CNT_MAX * sizeof(hal_u32_t*));
@@ -227,12 +253,21 @@ int rtapi_app_main(void)
     // parse parameter string
     if ( steps != NULL )
     {
+#if FOR_MACHINEKIT
         for ( axis = 0, data = steps; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+#else
+        for ( axis = 0, data = steps; (token = strsep(&data, ",")) != NULL; axis++ )
+        {
+#endif
 
             // get steps count
+#if FOR_MACHINEKIT
             steps_cnt[axis] = (hal_u32_t) strtoul(token, NULL, 10);
+#else
+            retval = kstrtou32(token, 10, &steps_cnt[axis]);
+#endif
             if ( steps_cnt[axis] <= 0 ) continue;
             if ( steps_cnt[axis] > AXIS_STEPS_MAX ) steps_cnt[axis] = AXIS_STEPS_MAX;
 
@@ -280,39 +315,68 @@ int rtapi_app_main(void)
     // parse parameter string
     if ( step_size != NULL )
     {
+#if FOR_MACHINEKIT
         for ( axis = 0, data = step_size; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+#else
+        for ( axis = 0, data = step_size; (token = strsep(&data, ",")) != NULL; axis++ )
+        {
+#endif
             if ( !axis_adj[axis] ) continue;
 
+#if FOR_MACHINEKIT
             *_step_size[axis] = (hal_float_t) strtod(token, NULL);
+#else
+            retval = kstrtou32(token, 10, &n);
+            *_step_size[axis] = (hal_float_t) n;
+#endif
         }
     }
 
     // parse parameter string
     if ( start_from != NULL )
     {
+#if FOR_MACHINEKIT
         for ( axis = 0, data = start_from; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+#else
+        for ( axis = 0, data = start_from; (token = strsep(&data, ",")) != NULL; axis++ )
+        {
+#endif
             if ( !axis_adj[axis] ) continue;
 
+#if FOR_MACHINEKIT
             *_start_from[axis] = (hal_float_t) strtod(token, NULL);
+#else
+            retval = kstrtou32(token, 10, &n);
+            *_start_from[axis] = (hal_float_t) n;
+#endif
         }
     }
 
     // parse parameter string
     if ( rel_axis != NULL )
     {
+#if FOR_MACHINEKIT
         for ( axis = 0, data = rel_axis; (token = strtok(data, ",")) != NULL; axis++ )
         {
             if ( data != NULL ) data = NULL;
+#else
+        for ( axis = 0, data = rel_axis; (token = strsep(&data, ",")) != NULL; axis++ )
+        {
+#endif
             if ( !axis_adj[axis] ) continue;
 
             // parse axis id as number
             if ( token[0] >= '0' && token[0] <= '9' )
             {
+#if FOR_MACHINEKIT
                 *_rel_axis[axis] = (hal_u32_t) strtol(token, NULL, 10);
+#else
+                retval = kstrtou32(token, 10, (uint32_t*)_rel_axis[axis]);
+#endif
                 if ( *_rel_axis[axis] >= AXIS_CNT_MAX ) *_rel_axis[axis] = AXIS_CNT_MAX - 1;
             }
             // parse axis id as char
@@ -343,6 +407,8 @@ int rtapi_app_main(void)
 
 void rtapi_app_exit(void)
 {
+#if FOR_MACHINEKIT
     hal_remove_vtable(vtable_id);
+#endif
     hal_exit(comp_id);
 }
