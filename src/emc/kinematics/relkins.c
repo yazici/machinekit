@@ -103,7 +103,8 @@ kinematicsForward
 
         adj =   adj_0
               + (adj_1 - adj_0)
-              * (joints[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0));
+              * (joints[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0))
+              / (*_step_size[axis]);
 
         *axes[axis] = joints[axis] + adj;
     }
@@ -158,7 +159,8 @@ kinematicsInverse
 
         adj =   adj_0
               + (adj_1 - adj_0)
-              * (*axes[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0));
+              * (*axes[*_rel_axis[axis]] - (*_step_size[axis]) * ((hal_float_t)step_0))
+              / (*_step_size[axis]);
 
         joints[axis] = *axes[axis] - adj;
     }
