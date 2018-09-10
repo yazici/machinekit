@@ -242,14 +242,30 @@ static void stepgen_update_freq(void *arg, long period)
             if ( !have_new_cmd ) continue;
 
             // 2
+
             // get direction data
             move_forward = step_pos_target > s.step_pos ? 1 : 0;
             s.dir_state = gpio_pin_get(s.dir_port, s.dir_pin);
             if ( s.dir_inv ) s.dir_state = (hal_bit_t) ~(s.dir_state);
             dir_change = s.dir_state == move_forward ? 1 : 0;
 
+            s.task = 1;
 
+            if ( dir_change )
+            {
+                s.task_type = TASK_DIR_STEPS;
+                pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1, 0, (hal_u32_t)s.dir_hold, 0);
+            }
+            else
+            {
+                s.task_type = TASK_STEPS;
+            }
 
+            step_task = move_forward ? step_pos_target - s.step_pos : s.step_pos - step_pos_target;
+            steps_time = step_task;
+            toggle_time = period;
+
+            pulsgen_task_setup((hal_u32_t)s.dir_pulsgen_ch, 1, 0, (hal_u32_t)s.dir_hold, 0);
         }
         else
         {
