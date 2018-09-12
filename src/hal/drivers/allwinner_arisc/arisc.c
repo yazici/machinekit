@@ -12,7 +12,7 @@
 #include "cpu.h"
 #include "msg.h"
 #include "gpio.h"
-#include "stepgen.h"
+#include "stepgen_new.h"
 #include "encoder.h"
 
 #if !defined(TARGET_PLATFORM_ALLWINNER)
