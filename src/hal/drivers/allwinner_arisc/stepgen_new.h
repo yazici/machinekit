@@ -22,6 +22,12 @@
 
 #define STEPGEN_CH_CNT_MAX 10
 
+#define PRINT_ERROR(MSG) \
+    rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] "MSG"\n", comp_name)
+
+#define PRINT_ERROR_AND_RETURN(MSG,RETVAL) \
+    { PRINT_ERROR(MSG); return RETVAL; }
+
 typedef struct
 {
     // available for all functions
@@ -59,8 +65,8 @@ typedef struct
 
 
 
-static int8_t *channels;
-RTAPI_MP_STRING(channels, "Channels count");
+static int8_t *num_chan = "0";
+RTAPI_MP_STRING(num_chan, "Channels count");
 
 static stepgen_ch_t *sg;
 static uint8_t ch_cnt = 0;
@@ -90,31 +96,27 @@ static void stepgen_make_pulses(void *arg, long period)
 
 static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 {
-    int32_t r, ch;
+    int32_t r, ch, pulsgen_ch;
 
-    // get channels count
+    // get num_chan count
 
-    ch_cnt = (uint8_t) strtoul((const char *)channels, NULL, 10);
+    ch_cnt = (uint8_t) strtoul((const char *)num_chan, NULL, 10);
     if ( !ch_cnt ) return 0;
     if ( ch_cnt > STEPGEN_CH_CNT_MAX ) ch_cnt = STEPGEN_CH_CNT_MAX;
 
     // shared memory allocation
 
     sg = hal_malloc(ch_cnt * sizeof(stepgen_ch_t));
-    if ( !sg )
-    {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] hal_malloc() failed \n", comp_name);
-        return -1;
-    }
+    if ( !sg ) PRINT_ERROR_AND_RETURN("hal_malloc() failed", -1);
 
-    // export HAL pins
+    // export HAL pins and set default values
 
-    #define EXPORT_PIN(IO_TYPE,TYPE,VAL,NAME,DEFAULT) \
+#define EXPORT_PIN(IO_TYPE,TYPE,VAL,NAME,DEFAULT) \
     r += hal_pin_##TYPE##_newf(IO_TYPE, &(sg[ch].VAL), comp_id,\
     "%s.stepgen.%d." NAME, comp_name, ch);\
     *sg[ch].VAL = DEFAULT;
 
-    for ( r = 0, ch = ch_cnt; ch--; )
+    for ( r = 0, pulsgen_ch = 0, ch = ch_cnt; ch--; )
     {
         EXPORT_PIN(HAL_IN,bit,enable,"enable", 0);
         EXPORT_PIN(HAL_IN,u32,step_space,"stepspace", 1);
@@ -135,12 +137,13 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT_PIN(HAL_OUT,float,freq,"frequency", 0.0);
         EXPORT_PIN(HAL_OUT,s32,counts,"counts", 0);
         EXPORT_PIN(HAL_OUT,s32,rawcounts,"rawcounts", 0);
+
+        sg[ch]->step_pulsgen_ch0 = pulsgen_ch++;
+        sg[ch]->step_pulsgen_ch1 = pulsgen_ch++;
+        sg[ch]->dir_pulsgen_ch = pulsgen_ch++;
     }
-    if ( r )
-    {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] HAL pins export failed \n", comp_name);
-        return -1;
-    }
+
+    if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 
 #undef EXPORT_PIN
 
@@ -150,11 +153,7 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     r+= hal_export_functf(stepgen_capture_pos, 0, 1, 0, comp_id, "%s.stepgen.capture-position", comp_name);
     r+= hal_export_functf(stepgen_update_freq, 0, 1, 0, comp_id, "%s.stepgen.update-freq", comp_name);
     r+= hal_export_functf(stepgen_make_pulses, 0, 0, 0, comp_id, "%s.stepgen.make-pulses", comp_name);
-    if ( r )
-    {
-        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] HAL functions export failed\n", comp_name);
-        return -1;
-    }
+    if ( r ) PRINT_ERROR_AND_RETURN("HAL functions export failed", -1);
 
     return 0;
 }
