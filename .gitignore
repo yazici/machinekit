@@ -70,3 +70,5 @@ src/hal/cython/machinekit/*.c
 *.9icomp
 .project
 .cproject
+.settings/*
+
