@@ -150,10 +150,10 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     for ( r = 0, pulsgen_ch = 0, ch = ch_cnt; ch--; )
     {
         EXPORT_PIN(HAL_IN,bit,enable,"enable", 0);
-        EXPORT_PIN(HAL_IN,u32,step_space,"stepspace", 1);
-        EXPORT_PIN(HAL_IN,u32,step_len,"steplen", 1);
-        EXPORT_PIN(HAL_IN,u32,dir_setup,"dirsetup", 1);
-        EXPORT_PIN(HAL_IN,u32,dir_hold,"dirhold", 1);
+        EXPORT_PIN(HAL_IN,u32,step_space,"stepspace", 1000);
+        EXPORT_PIN(HAL_IN,u32,step_len,"steplen", 1000);
+        EXPORT_PIN(HAL_IN,u32,dir_setup,"dirsetup", 1000);
+        EXPORT_PIN(HAL_IN,u32,dir_hold,"dirhold", 1000);
         EXPORT_PIN(HAL_IN,u32,step_port,"step-port", UINT32_MAX);
         EXPORT_PIN(HAL_IN,u32,step_pin,"step-pin", UINT32_MAX);
         EXPORT_PIN(HAL_IN,bit,step_inv,"step-inv", 0);
@@ -172,6 +172,21 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         sg[ch]->step_pulsgen_ch0 = pulsgen_ch++;
         sg[ch]->step_pulsgen_ch1 = pulsgen_ch++;
         sg[ch]->dir_pulsgen_ch = pulsgen_ch++;
+
+        sg[ch]->step_inv_old = 0;
+        sg[ch]->step_pin_old = UINT32_MAX;
+        sg[ch]->step_port_old = UINT32_MAX;
+        sg[ch]->step_len_old = 1000;
+        sg[ch]->step_space_old = 1000;
+        sg[ch]->dir_inv_old = 0;
+        sg[ch]->dir_pin_old = UINT32_MAX;
+        sg[ch]->dir_port_old = UINT32_MAX;
+        sg[ch]->pos_cmd_old = 0.0;
+        sg[ch]->vel_max_old = 0.0;
+        sg[ch]->accel_max_old = 0.0;
+        sg[ch]->steps_freq = 0;
+        sg[ch]->steps_freq_max = 0;
+        sg[ch]->steps_accel_max = 0;
     }
 
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
