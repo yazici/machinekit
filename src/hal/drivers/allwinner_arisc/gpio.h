@@ -66,6 +66,8 @@ RTAPI_MP_STRING(gpio_out, "GPIO output pins, comma separated");
 static const char *gpio_name[GPIO_PORTS_CNT] =
     {"PA","PB","PC","PD","PE","PF","PG","PL"};
 
+static hal_u32_t **gpio_port_ID;
+
 static hal_bit_t **gpio_hal_0[GPIO_PORTS_CNT];
 static hal_bit_t **gpio_hal_1[GPIO_PORTS_CNT];
 
@@ -424,6 +426,30 @@ static int32_t gpio_malloc_and_export(const char *comp_name, int32_t comp_id)
             }
         }
 
+    }
+
+
+    // export port ID pins
+    gpio_port_ID = hal_malloc(GPIO_PORTS_CNT * sizeof(hal_u32_t));
+    if ( !gpio_port_ID )
+    {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] port ID pins malloc failed\n", comp_name);
+        return -1;
+    }
+
+    for ( r = 0, port = GPIO_PORTS_CNT; port--; )
+    {
+        r += hal_pin_bit_newf(HAL_OUT, &gpio_port_ID[port], comp_id,
+            "%s.gpio.%s", comp_name, gpio_name[port]);
+
+        if (r) break;
+
+        *gpio_port_ID[port] = port;
+    }
+    if ( r )
+    {
+        rtapi_print_msg(RTAPI_MSG_ERR, "%s: [GPIO] port ID pins export failed\n", comp_name);
+        return -1;
     }
 
 
