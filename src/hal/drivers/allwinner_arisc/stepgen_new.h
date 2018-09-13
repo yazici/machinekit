@@ -169,6 +169,14 @@ abort_output(uint8_t ch)
     pulsgen_task_abort(gp->dir_pulsgen_ch);
 }
 
+static void
+abort_task(uint8_t ch)
+{
+    gp->task = TASK_IDLE;
+    gp->steps_freq = 0;
+    gp->freq = 0;
+}
+
 static hal_s32_t
 get_rawcounts(uint8_t ch)
 {
@@ -269,9 +277,7 @@ static void stepgen_update_freq(void *arg, long period)
         g->counts = g->rawcounts;
         if ( gp->task && !g->enable )
         {
-            gp->task = TASK_IDLE;
-            gp->steps_freq = 0;
-            gp->freq = 0;
+            abort_task();
             continue;
         }
     }
@@ -291,12 +297,7 @@ static void stepgen_make_pulses(void *arg, long period)
         // capture position in steps (rawcounts)
         if ( gp->task && !g->enable ) abort_output();
         g->rawcounts = get_rawcounts(ch);
-        if ( gp->task && !g->enable )
-        {
-            gp->task = TASK_IDLE;
-            gp->steps_freq = 0;
-            gp->freq = 0;
-        }
+        if ( gp->task && !g->enable ) abort_task();
     }
 }
 
