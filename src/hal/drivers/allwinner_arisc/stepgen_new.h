@@ -20,10 +20,9 @@
 
 
 
+// DATA
+
 #define STEPGEN_CH_CNT_MAX 10
-
-
-
 
 #define g *sg[ch]
 #define gp sg[ch]
@@ -42,9 +41,6 @@
 #define PRINT_ERROR_AND_RETURN(MSG,RETVAL) \
     { PRINT_ERROR(MSG); return RETVAL; }
 
-
-
-
 enum
 {
     TASK_IDLE = 0,
@@ -55,9 +51,6 @@ enum
     TASK_FWD_DIR_REV,
     TASK_REV_DIR_FWD
 };
-
-
-
 
 typedef struct
 {
@@ -80,7 +73,7 @@ typedef struct
     hal_bit_t step_inv_old; // private
     hal_u32_t step_pulsgen_ch0; // private
     hal_u32_t step_pulsgen_ch1; // private
-    hal_bit_t step_ch_init; // private
+    hal_bit_t step_ch_ready; // private
     hal_u32_t *dir_port;
     hal_u32_t *dir_pin;
     hal_bit_t *dir_inv;
@@ -88,7 +81,7 @@ typedef struct
     hal_u32_t dir_pin_old; // private
     hal_bit_t dir_inv_old; // private
     hal_u32_t dir_pulsgen_ch; // private
-    hal_bit_t dir_ch_init; // private
+    hal_bit_t dir_ch_ready; // private
 
     hal_u32_t steps_freq; // private
     hal_u32_t steps_freq_max; // private
@@ -118,6 +111,8 @@ typedef struct
 
 
 
+// VAR
+
 static int8_t *num_chan = "0";
 RTAPI_MP_STRING(num_chan, "Channels count");
 
@@ -131,6 +126,8 @@ static uint8_t ch_cnt = 0;
 
 
 
+
+// TOOLS
 
 static hal_bit_t
 step_state_get(uint8_t ch)
@@ -158,9 +155,6 @@ dir_state_set(uint8_t ch, hal_bit_t state)
     else                       gpio_pin_set   (g->dir_port, g->dir_pin);
 }
 
-
-
-
 static void
 abort_output(uint8_t ch)
 {
@@ -172,9 +166,64 @@ abort_output(uint8_t ch)
 static void
 abort_task(uint8_t ch)
 {
-    gp->task = TASK_IDLE;
-    gp->steps_freq = 0;
-    gp->freq = 0;
+    gp->task        = TASK_IDLE;
+    gp->steps_freq  = 0;
+    gp->freq        = 0;
+}
+
+static void
+setup_step_ch(uint8_t ch)
+{
+    if ( g->step_port < GPIO_PORTS_CNT && g->step_pin < GPIO_PINS_CNT )
+    {
+        gp->step_ch_ready = 1;
+        pulsgen_pin_setup(gp->step_pulsgen_ch0, g->step_port, g->step_pin, g->step_inv);
+        pulsgen_pin_setup(gp->step_pulsgen_ch1, g->step_port, g->step_pin, g->step_inv);
+    }
+    else gp->step_ch_ready = 0;
+}
+
+static void
+setup_dir_ch(uint8_t ch)
+{
+    if ( g->dir_port < GPIO_PORTS_CNT && g->dir_pin < GPIO_PINS_CNT )
+    {
+        gp->dir_ch_ready = 1;
+        pulsgen_pin_setup(gp->dir_pulsgen_ch, g->dir_port, g->dir_pin, g->dir_inv);
+    }
+    else gp->dir_ch_ready = 0;
+}
+
+static hal_bit_t
+step_pin_changed(uint8_t ch)
+{
+    return ( g->step_port != gp->step_port_old  ||
+             g->step_pin  != gp->step_pin       ||
+             g->step_inv  != gp->step_inv ) ? 1 : 0;
+}
+
+static hal_bit_t
+dir_pin_changed(uint8_t ch)
+{
+    return ( g->dir_port != gp->dir_port_old    ||
+             g->dir_pin  != gp->dir_pin         ||
+             g->dir_inv  != gp->dir_inv ) ? 1 : 0;
+}
+
+static void
+save_step_pin(uint8_t ch)
+{
+    gp->step_port_old   = g->step_port;
+    gp->step_pin        = g->step_pin;
+    gp->step_inv        = g->step_inv;
+}
+
+static void
+save_dir_pin(uint8_t ch)
+{
+    gp->dir_port_old    = g->dir_port;
+    gp->dir_pin         = g->dir_pin;
+    gp->dir_inv         = g->dir_inv;
 }
 
 static hal_s32_t
@@ -196,20 +245,20 @@ get_rawcounts(uint8_t ch)
 
         case TASK_DIR_FWD:
             hal_u32_t step_toggles0 = pulsgen_task_toggles(gp->step_pulsgen_ch0);
-            hal_u32_t dir_toggles = pulsgen_task_toggles(gp->dir_pulsgen_ch);
+            hal_u32_t dir_toggles   = pulsgen_task_toggles(gp->dir_pulsgen_ch);
             counts += (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
             break;
 
         case TASK_DIR_REV:
             hal_u32_t step_toggles0 = pulsgen_task_toggles(gp->step_pulsgen_ch0);
-            hal_u32_t dir_toggles = pulsgen_task_toggles(gp->dir_pulsgen_ch);
+            hal_u32_t dir_toggles   = pulsgen_task_toggles(gp->dir_pulsgen_ch);
             counts -= (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
             break;
 
         case TASK_FWD_DIR_REV:
             hal_u32_t step_toggles0 = pulsgen_task_toggles(gp->step_pulsgen_ch0);
             hal_u32_t step_toggles1 = pulsgen_task_toggles(gp->step_pulsgen_ch1);
-            hal_u32_t dir_toggles = pulsgen_task_toggles(gp->dir_pulsgen_ch);
+            hal_u32_t dir_toggles   = pulsgen_task_toggles(gp->dir_pulsgen_ch);
             counts += step_toggles0 / 2;
             counts -= (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
@@ -217,7 +266,7 @@ get_rawcounts(uint8_t ch)
         case TASK_REV_DIR_FWD:
             hal_u32_t step_toggles0 = pulsgen_task_toggles(gp->step_pulsgen_ch0);
             hal_u32_t step_toggles1 = pulsgen_task_toggles(gp->step_pulsgen_ch1);
-            hal_u32_t dir_toggles = pulsgen_task_toggles(gp->dir_pulsgen_ch);
+            hal_u32_t dir_toggles   = pulsgen_task_toggles(gp->dir_pulsgen_ch);
             counts -= step_toggles0 / 2;
             counts += (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
@@ -233,6 +282,8 @@ get_rawcounts(uint8_t ch)
 
 
 
+
+// HAL functions
 
 static void stepgen_capture_pos(void *arg, long period)
 {
@@ -250,7 +301,7 @@ static void stepgen_capture_pos(void *arg, long period)
 
         // capture position in steps (counts, rawcounts)
         g->rawcounts = get_rawcounts(ch);
-        g->counts = g->rawcounts;
+        g->counts    = g->rawcounts;
 
         // capture position in units
         g->pos_fb = ((hal_float_t)g->counts) / g->pos_scale;
@@ -272,14 +323,18 @@ static void stepgen_update_freq(void *arg, long period)
     for ( ch = ch_cnt; ch--; )
     {
         // abort output if channel is disabled
+
         if ( gp->task && !g->enable ) abort_output();
+
         g->rawcounts = get_rawcounts(ch);
-        g->counts = g->rawcounts;
-        if ( gp->task && !g->enable )
-        {
-            abort_task();
-            continue;
-        }
+        g->counts    = g->rawcounts;
+
+        if ( gp->task && !g->enable ) { abort_task(); continue; }
+
+        // recalculate private and public data
+
+        if ( step_pin_changed(ch) ) { setup_step_ch(ch); save_step_pin(ch); }
+        if ( dir_pin_changed(ch) )  { setup_dir_ch(ch);  save_dir_pin(ch); }
     }
 }
 
@@ -295,14 +350,23 @@ static void stepgen_make_pulses(void *arg, long period)
     {
         // abort output if channel is disabled
         // capture position in steps (rawcounts)
+
         if ( gp->task && !g->enable ) abort_output();
+
         g->rawcounts = get_rawcounts(ch);
+
         if ( gp->task && !g->enable ) abort_task();
     }
 }
 
 
 
+
+
+
+
+
+// INIT
 
 static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 {
@@ -352,11 +416,11 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         g->step_port_old = UINT32_MAX;
         g->step_len_old = 1000;
         g->step_space_old = 1000;
-        g->step_ch_init = 0;
+        g->step_ch_ready = 0;
         g->dir_inv_old = 0;
         g->dir_pin_old = UINT32_MAX;
         g->dir_port_old = UINT32_MAX;
-        g->dir_ch_init = 0;
+        g->dir_ch_ready = 0;
         g->pos_cmd_old = 0.0;
         g->vel_max_old = 0.0;
         g->accel_max_old = 0.0;
