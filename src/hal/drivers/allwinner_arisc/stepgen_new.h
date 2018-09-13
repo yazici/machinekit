@@ -130,6 +130,12 @@ static uint8_t ch_cnt = 0;
 // TOOLS
 
 static hal_bit_t
+floats_equal(hal_float_t f1, hal_float_t f2)
+{
+    return *((int64_t*) &f1) == *((int64_t*) &f2);
+}
+
+static hal_bit_t
 step_state_get(uint8_t ch)
 {
     return g->step_inv ^ gpio_pin_get(g->step_port, g->step_pin) ? 0 : 1;
@@ -312,8 +318,8 @@ static void stepgen_update_freq(void *arg, long period)
 {
     // TODO:
     // +++  abort output if channel is disabled
-    //      recalculate private and public data
-    //      capture position in steps (counts, rawcounts)
+    // +++  recalculate private and public data
+    // +++  capture position in steps (counts, rawcounts)
     //      start output
     //      update frequency and continue output
     //      stop output if in position
@@ -323,18 +329,41 @@ static void stepgen_update_freq(void *arg, long period)
     for ( ch = ch_cnt; ch--; )
     {
         // abort output if channel is disabled
-
         if ( gp->task && !g->enable ) abort_output();
 
+        // capture position in steps (counts, rawcounts)
         g->rawcounts = get_rawcounts(ch);
         g->counts    = g->rawcounts;
 
+        // abort task
         if ( gp->task && !g->enable ) { abort_task(); continue; }
+
+        // setup pulsgen channels
+        if ( step_pin_changed(ch) ) { setup_step_ch(ch); save_step_pin(ch); }
+        if ( dir_pin_changed(ch) )  { setup_dir_ch(ch);  save_dir_pin(ch); }
 
         // recalculate private and public data
 
-        if ( step_pin_changed(ch) ) { setup_step_ch(ch); save_step_pin(ch); }
-        if ( dir_pin_changed(ch) )  { setup_dir_ch(ch);  save_dir_pin(ch); }
+        if ( !floats_equal(g->accel_max, gp->accel_max_old) )
+        {
+            gp->steps_accel_max = (hal_u32_t) (g->accel_max * g->pos_scale);
+            gp->accel_max_old   = g->accel_max;
+        }
+
+        if ( !floats_equal(g->vel_max, gp->vel_max_old) )
+        {
+            gp->steps_freq_max  = (hal_u32_t) (g->vel_max * g->pos_scale);
+            gp->vel_max_old     = g->vel_max;
+        }
+
+        if ( g->step_len != gp->step_len_old || g->step_space != gp->step_space_old )
+        {
+            hal_u32_t freq_max = 1000000000 / (g->step_len + g->step_space);
+            if ( gp->steps_freq_max > freq_max ) gp->steps_freq_max = freq_max;
+
+            gp->step_len_old    = g->step_len;
+            gp->step_space_old  = g->step_space
+        }
     }
 }
 
