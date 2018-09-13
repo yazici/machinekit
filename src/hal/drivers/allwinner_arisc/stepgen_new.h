@@ -22,11 +22,27 @@
 
 #define STEPGEN_CH_CNT_MAX 10
 
+
+
+
+#define g *sg[ch]
+
+#define EXPORT_PIN(IO_TYPE,VAR_TYPE,VAL,NAME,DEFAULT) \
+    r += hal_pin_##VAR_TYPE##_newf(IO_TYPE, &(sg[ch]->VAL), comp_id,\
+    "%s.stepgen.%d." NAME, comp_name, ch);\
+    g->VAL = DEFAULT;
+
+#define EXPORT_FUNC(FUNC,NAME,FP) \
+    hal_export_functf(FUNC, 0, FP, 0, comp_id, "%s.stepgen."NAME, comp_name)
+
 #define PRINT_ERROR(MSG) \
     rtapi_print_msg(RTAPI_MSG_ERR, "%s: [STEPGEN] "MSG"\n", comp_name)
 
 #define PRINT_ERROR_AND_RETURN(MSG,RETVAL) \
     { PRINT_ERROR(MSG); return RETVAL; }
+
+
+
 
 typedef struct
 {
@@ -99,27 +115,49 @@ static uint8_t ch_cnt = 0;
 static void stepgen_capture_pos(void *arg, long period)
 {
     // TODO:
-    // if POS_SCALE == 0.0 then POS_SCALE = 1.0
-    // capture position in steps (counts, rawcounts)
-    // capture position in units
+    // +++  if POS_SCALE == 0.0 then POS_SCALE = 1.0
+    //      capture position in steps (counts, rawcounts)
+    //      capture position in units
+
+    static uint8_t ch;
+
+    for ( ch = ch_cnt; ch--; )
+    {
+        // if POS_SCALE == 0.0 then POS_SCALE = 1.0
+        if ( g->pos_scale < 1e-20 && g->pos_scale > -1e-20 ) g->pos_scale = 1.0;
+    }
 }
 
 static void stepgen_update_freq(void *arg, long period)
 {
     // TODO:
-    // abort output if channel is disabled
-    // recalculate private and public data
-    // capture position in steps (counts, rawcounts)
-    // start output
-    // update frequency and continue output
-    // stop output if in position
+    //      abort output if channel is disabled
+    //      recalculate private and public data
+    //      capture position in steps (counts, rawcounts)
+    //      start output
+    //      update frequency and continue output
+    //      stop output if in position
+
+    static uint8_t ch;
+
+    for ( ch = ch_cnt; ch--; )
+    {
+
+    }
 }
 
 static void stepgen_make_pulses(void *arg, long period)
 {
     // TODO:
-    // abort output if channel is disabled
-    // capture position in steps (rawcounts)
+    //      abort output if channel is disabled
+    //      capture position in steps (rawcounts)
+
+    static uint8_t ch;
+
+    for ( ch = ch_cnt; ch--; )
+    {
+
+    }
 }
 
 
@@ -141,11 +179,6 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     if ( !sg ) PRINT_ERROR_AND_RETURN("hal_malloc() failed", -1);
 
     // export HAL pins and set default values
-
-#define EXPORT_PIN(IO_TYPE,TYPE,VAL,NAME,DEFAULT) \
-    r += hal_pin_##TYPE##_newf(IO_TYPE, &(sg[ch].VAL), comp_id,\
-    "%s.stepgen.%d." NAME, comp_name, ch);\
-    *sg[ch].VAL = DEFAULT;
 
     for ( r = 0, pulsgen_ch = 0, ch = ch_cnt; ch--; )
     {
@@ -169,39 +202,33 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT_PIN(HAL_OUT,s32,counts,"counts", 0);
         EXPORT_PIN(HAL_OUT,s32,rawcounts,"rawcounts", 0);
 
-        sg[ch]->step_pulsgen_ch0 = pulsgen_ch++;
-        sg[ch]->step_pulsgen_ch1 = pulsgen_ch++;
-        sg[ch]->dir_pulsgen_ch = pulsgen_ch++;
+        g->step_pulsgen_ch0 = pulsgen_ch++;
+        g->step_pulsgen_ch1 = pulsgen_ch++;
+        g->dir_pulsgen_ch = pulsgen_ch++;
 
-        sg[ch]->step_inv_old = 0;
-        sg[ch]->step_pin_old = UINT32_MAX;
-        sg[ch]->step_port_old = UINT32_MAX;
-        sg[ch]->step_len_old = 1000;
-        sg[ch]->step_space_old = 1000;
-        sg[ch]->dir_inv_old = 0;
-        sg[ch]->dir_pin_old = UINT32_MAX;
-        sg[ch]->dir_port_old = UINT32_MAX;
-        sg[ch]->pos_cmd_old = 0.0;
-        sg[ch]->vel_max_old = 0.0;
-        sg[ch]->accel_max_old = 0.0;
-        sg[ch]->steps_freq = 0;
-        sg[ch]->steps_freq_max = 0;
-        sg[ch]->steps_accel_max = 0;
+        g->step_inv_old = 0;
+        g->step_pin_old = UINT32_MAX;
+        g->step_port_old = UINT32_MAX;
+        g->step_len_old = 1000;
+        g->step_space_old = 1000;
+        g->dir_inv_old = 0;
+        g->dir_pin_old = UINT32_MAX;
+        g->dir_port_old = UINT32_MAX;
+        g->pos_cmd_old = 0.0;
+        g->vel_max_old = 0.0;
+        g->accel_max_old = 0.0;
+        g->steps_freq = 0;
+        g->steps_freq_max = 0;
+        g->steps_accel_max = 0;
     }
-
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
-
-#undef EXPORT_PIN
 
     // export HAL functions
 
     r = 0;
-    r+= hal_export_functf(stepgen_capture_pos, 0, 1, 0, comp_id,
-                          "%s.stepgen.capture-position", comp_name);
-    r+= hal_export_functf(stepgen_update_freq, 0, 1, 0, comp_id,
-                          "%s.stepgen.update-freq", comp_name);
-    r+= hal_export_functf(stepgen_make_pulses, 0, 0, 0, comp_id,
-                          "%s.stepgen.make-pulses", comp_name);
+    r += EXPORT_FUNC(stepgen_capture_pos, "capture-position", 1);
+    r += EXPORT_FUNC(stepgen_update_freq, "update-freq", 1);
+    r += EXPORT_FUNC(stepgen_make_pulses, "make-pulses", 0);
     if ( r ) PRINT_ERROR_AND_RETURN("HAL functions export failed", -1);
 
     return 0;
@@ -209,5 +236,10 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 
 
 
+
+#undef EXPORT_PIN
+#undef PRINT_ERROR
+#undef PRINT_ERROR_AND_RETURN
+#undef g
 
 #endif
