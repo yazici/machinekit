@@ -31,9 +31,12 @@
 typedef struct
 {
     // available for all functions
+
     hal_bit_t *enable;
     hal_u32_t *step_space;
     hal_u32_t *step_len;
+    hal_u32_t step_space_old; // private
+    hal_u32_t step_len_old; // private
     hal_u32_t *dir_setup;
     hal_u32_t *dir_hold;
     hal_s32_t *counts;
@@ -41,18 +44,32 @@ typedef struct
     hal_u32_t *step_port;
     hal_u32_t *step_pin;
     hal_bit_t *step_inv;
-    hal_u32_t step_pulsgen_ch0;
-    hal_u32_t step_pulsgen_ch1;
+    hal_u32_t step_port_old; // private
+    hal_u32_t step_pin_old; // private
+    hal_bit_t step_inv_old; // private
+    hal_u32_t step_pulsgen_ch0; // private
+    hal_u32_t step_pulsgen_ch1; // private
     hal_u32_t *dir_port;
     hal_u32_t *dir_pin;
     hal_bit_t *dir_inv;
-    hal_u32_t dir_pulsgen_ch;
+    hal_u32_t dir_port_old; // private
+    hal_u32_t dir_pin_old; // private
+    hal_bit_t dir_inv_old; // private
+    hal_u32_t dir_pulsgen_ch; // private
+
+    hal_u32_t steps_freq; // private
+    hal_u32_t steps_freq_max; // private
+    hal_u32_t steps_accel_max; // private
 
     // aren't available for the `make_pulses()`
+
     hal_float_t *vel_max;
     hal_float_t *accel_max;
+    hal_float_t vel_max_old; // private
+    hal_float_t accel_max_old; // private
     hal_float_t *pos_scale;
     hal_float_t *pos_cmd;
+    hal_float_t pos_cmd_old; // private
     hal_float_t *pos_fb;
     hal_float_t *freq;
 } stepgen_ch_t;
@@ -81,14 +98,28 @@ static uint8_t ch_cnt = 0;
 
 static void stepgen_capture_pos(void *arg, long period)
 {
+    // TODO:
+    // if POS_SCALE == 0.0 then POS_SCALE = 1.0
+    // capture position in steps (counts, rawcounts)
+    // capture position in units
 }
 
 static void stepgen_update_freq(void *arg, long period)
 {
+    // TODO:
+    // abort output if channel is disabled
+    // recalculate private and public data
+    // capture position in steps (counts, rawcounts)
+    // start output
+    // update frequency and continue output
+    // stop output if in position
 }
 
 static void stepgen_make_pulses(void *arg, long period)
 {
+    // TODO:
+    // abort output if channel is disabled
+    // capture position in steps (rawcounts)
 }
 
 
@@ -123,11 +154,11 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT_PIN(HAL_IN,u32,step_len,"steplen", 1);
         EXPORT_PIN(HAL_IN,u32,dir_setup,"dirsetup", 1);
         EXPORT_PIN(HAL_IN,u32,dir_hold,"dirhold", 1);
-        EXPORT_PIN(HAL_IN,u32,step_port,"step-port", PA);
-        EXPORT_PIN(HAL_IN,u32,step_pin,"step-pin", 15);
+        EXPORT_PIN(HAL_IN,u32,step_port,"step-port", UINT32_MAX);
+        EXPORT_PIN(HAL_IN,u32,step_pin,"step-pin", UINT32_MAX);
         EXPORT_PIN(HAL_IN,bit,step_inv,"step-inv", 0);
-        EXPORT_PIN(HAL_IN,u32,dir_port,"dir-port", PL);
-        EXPORT_PIN(HAL_IN,u32,dir_pin,"dir-pin", 10);
+        EXPORT_PIN(HAL_IN,u32,dir_port,"dir-port", UINT32_MAX);
+        EXPORT_PIN(HAL_IN,u32,dir_pin,"dir-pin", UINT32_MAX);
         EXPORT_PIN(HAL_IN,bit,dir_inv,"dir-inv", 0);
         EXPORT_PIN(HAL_IN,float,pos_scale,"position-scale", 1.0);
         EXPORT_PIN(HAL_IN,float,vel_max,"maxvel", 0.0);
@@ -150,9 +181,12 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
     // export HAL functions
 
     r = 0;
-    r+= hal_export_functf(stepgen_capture_pos, 0, 1, 0, comp_id, "%s.stepgen.capture-position", comp_name);
-    r+= hal_export_functf(stepgen_update_freq, 0, 1, 0, comp_id, "%s.stepgen.update-freq", comp_name);
-    r+= hal_export_functf(stepgen_make_pulses, 0, 0, 0, comp_id, "%s.stepgen.make-pulses", comp_name);
+    r+= hal_export_functf(stepgen_capture_pos, 0, 1, 0, comp_id,
+                          "%s.stepgen.capture-position", comp_name);
+    r+= hal_export_functf(stepgen_update_freq, 0, 1, 0, comp_id,
+                          "%s.stepgen.update-freq", comp_name);
+    r+= hal_export_functf(stepgen_make_pulses, 0, 0, 0, comp_id,
+                          "%s.stepgen.make-pulses", comp_name);
     if ( r ) PRINT_ERROR_AND_RETURN("HAL functions export failed", -1);
 
     return 0;
