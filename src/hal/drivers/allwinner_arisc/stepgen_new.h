@@ -178,58 +178,69 @@ abort_task(uint8_t ch)
 }
 
 static void
-setup_step_ch(uint8_t ch)
+update_accel_max(uint8_t ch)
 {
-    if ( g->step_port < GPIO_PORTS_CNT && g->step_pin < GPIO_PINS_CNT )
+    if ( !floats_equal(g->accel_max, gp->accel_max_old) )
     {
-        gp->step_ch_ready = 1;
-        pulsgen_pin_setup(gp->step_pulsgen_ch0, g->step_port, g->step_pin, g->step_inv);
-        pulsgen_pin_setup(gp->step_pulsgen_ch1, g->step_port, g->step_pin, g->step_inv);
+        gp->steps_accel_max = (hal_u32_t) (g->accel_max * g->pos_scale);
+        gp->accel_max_old   = g->accel_max;
     }
-    else gp->step_ch_ready = 0;
 }
 
 static void
-setup_dir_ch(uint8_t ch)
+update_vel_max(uint8_t ch)
 {
-    if ( g->dir_port < GPIO_PORTS_CNT && g->dir_pin < GPIO_PINS_CNT )
+    if ( !floats_equal(g->vel_max, gp->vel_max_old) )
     {
-        gp->dir_ch_ready = 1;
-        pulsgen_pin_setup(gp->dir_pulsgen_ch, g->dir_port, g->dir_pin, g->dir_inv);
+        gp->steps_freq_max  = (hal_u32_t) (g->vel_max * g->pos_scale);
+        gp->vel_max_old     = g->vel_max;
     }
-    else gp->dir_ch_ready = 0;
-}
 
-static hal_bit_t
-step_pin_changed(uint8_t ch)
-{
-    return ( g->step_port != gp->step_port_old  ||
-             g->step_pin  != gp->step_pin       ||
-             g->step_inv  != gp->step_inv ) ? 1 : 0;
-}
+    if ( g->step_len != gp->step_len_old || g->step_space != gp->step_space_old )
+    {
+        hal_u32_t freq_max = 1000000000 / (g->step_len + g->step_space);
+        if ( gp->steps_freq_max > freq_max ) gp->steps_freq_max = freq_max;
 
-static hal_bit_t
-dir_pin_changed(uint8_t ch)
-{
-    return ( g->dir_port != gp->dir_port_old    ||
-             g->dir_pin  != gp->dir_pin         ||
-             g->dir_inv  != gp->dir_inv ) ? 1 : 0;
+        gp->step_len_old    = g->step_len;
+        gp->step_space_old  = g->step_space
+    }
 }
 
 static void
-save_step_pin(uint8_t ch)
+update_pins(uint8_t ch)
 {
-    gp->step_port_old   = g->step_port;
-    gp->step_pin        = g->step_pin;
-    gp->step_inv        = g->step_inv;
-}
+    if ( g->step_port != gp->step_port_old  ||
+         g->step_pin  != gp->step_pin       ||
+         g->step_inv  != gp->step_inv )
+    {
+        if ( g->step_port < GPIO_PORTS_CNT && g->step_pin < GPIO_PINS_CNT )
+        {
+            gp->step_ch_ready = 1;
+            pulsgen_pin_setup(gp->step_pulsgen_ch0, g->step_port, g->step_pin, g->step_inv);
+            pulsgen_pin_setup(gp->step_pulsgen_ch1, g->step_port, g->step_pin, g->step_inv);
+        }
+        else gp->step_ch_ready = 0;
 
-static void
-save_dir_pin(uint8_t ch)
-{
-    gp->dir_port_old    = g->dir_port;
-    gp->dir_pin         = g->dir_pin;
-    gp->dir_inv         = g->dir_inv;
+        gp->step_port_old = g->step_port;
+        gp->step_pin      = g->step_pin;
+        gp->step_inv      = g->step_inv;
+    }
+
+    if ( g->dir_port != gp->dir_port_old    ||
+         g->dir_pin  != gp->dir_pin         ||
+         g->dir_inv  != gp->dir_inv )
+    {
+        if ( g->dir_port < GPIO_PORTS_CNT && g->dir_pin < GPIO_PINS_CNT )
+        {
+            gp->dir_ch_ready = 1;
+            pulsgen_pin_setup(gp->dir_pulsgen_ch, g->dir_port, g->dir_pin, g->dir_inv);
+        }
+        else gp->dir_ch_ready = 0;
+
+        gp->dir_port_old = g->dir_port;
+        gp->dir_pin      = g->dir_pin;
+        gp->dir_inv      = g->dir_inv;
+    }
 }
 
 static hal_s32_t
@@ -338,32 +349,10 @@ static void stepgen_update_freq(void *arg, long period)
         // abort task
         if ( gp->task && !g->enable ) { abort_task(); continue; }
 
-        // setup pulsgen channels
-        if ( step_pin_changed(ch) ) { setup_step_ch(ch); save_step_pin(ch); }
-        if ( dir_pin_changed(ch) )  { setup_dir_ch(ch);  save_dir_pin(ch); }
-
         // recalculate private and public data
-
-        if ( !floats_equal(g->accel_max, gp->accel_max_old) )
-        {
-            gp->steps_accel_max = (hal_u32_t) (g->accel_max * g->pos_scale);
-            gp->accel_max_old   = g->accel_max;
-        }
-
-        if ( !floats_equal(g->vel_max, gp->vel_max_old) )
-        {
-            gp->steps_freq_max  = (hal_u32_t) (g->vel_max * g->pos_scale);
-            gp->vel_max_old     = g->vel_max;
-        }
-
-        if ( g->step_len != gp->step_len_old || g->step_space != gp->step_space_old )
-        {
-            hal_u32_t freq_max = 1000000000 / (g->step_len + g->step_space);
-            if ( gp->steps_freq_max > freq_max ) gp->steps_freq_max = freq_max;
-
-            gp->step_len_old    = g->step_len;
-            gp->step_space_old  = g->step_space
-        }
+        update_pins(ch);
+        update_accel_max();
+        update_vel_max();
     }
 }
 
