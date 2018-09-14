@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "rtapi.h"
 #include "rtapi_app.h"
@@ -439,7 +440,7 @@ static int32_t gpio_malloc_and_export(const char *comp_name, int32_t comp_id)
 
     for ( r = 0, port = GPIO_PORTS_CNT; port--; )
     {
-        r += hal_pin_bit_newf(HAL_OUT, &gpio_port_ID[port], comp_id,
+        r += hal_pin_u32_newf(HAL_OUT, &gpio_port_ID[port], comp_id,
             "%s.gpio.%s", comp_name, gpio_name[port]);
 
         if (r) break;
