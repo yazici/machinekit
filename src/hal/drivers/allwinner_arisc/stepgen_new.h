@@ -292,6 +292,13 @@ get_rawcounts(uint8_t ch)
     return counts;
 }
 
+static void
+update_counts(uint8_t ch)
+{
+    g.rawcounts = get_rawcounts(ch);
+    g.counts    = g.rawcounts;
+}
+
 
 
 
@@ -317,8 +324,7 @@ static void stepgen_capture_pos(void *arg, long period)
         if ( g.pos_scale < 1e-20 && g.pos_scale > -1e-20 ) g.pos_scale = 1.0;
 
         // capture position in steps (counts, rawcounts)
-        g.rawcounts = get_rawcounts(ch);
-        g.counts    = g.rawcounts;
+        update_counts(ch);
 
         // capture position in units
         g.pos_fb = ((hal_float_t)g.counts) / g.pos_scale;
@@ -343,8 +349,7 @@ static void stepgen_update_freq(void *arg, long period)
         if ( gp.task && !g.enable ) abort_output(ch);
 
         // capture position in steps (counts, rawcounts)
-        g.rawcounts = get_rawcounts(ch);
-        g.counts    = g.rawcounts;
+        update_counts(ch);
 
         // abort task
         if ( gp.task && !g.enable ) { abort_task(ch); continue; }
@@ -371,7 +376,7 @@ static void stepgen_make_pulses(void *arg, long period)
 
         if ( gp.task && !g.enable ) abort_output(ch);
 
-        g.rawcounts = get_rawcounts(ch);
+        update_counts(ch);
 
         if ( gp.task && !g.enable ) abort_task(ch);
     }
