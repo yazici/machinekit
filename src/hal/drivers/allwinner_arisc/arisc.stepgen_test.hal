@@ -1,10 +1,22 @@
-loadrt threads name1=servo-thread period1=1000000 fp1=1
+loadrt threads name1=base-thread period1=50000 fp1=0 name2=servo-thread period2=1000000 fp2=1
 
-loadrt arisc step_out=PA12,PA11,PA6 dir_out=PA1,PA0,PA3
+loadrt arisc stepgen_num_chan=1
 
+addf arisc.stepgen.make-pulses base-thread
 addf arisc.stepgen.capture-position servo-thread
 addf arisc.stepgen.update-freq servo-thread
 
+net PA arisc.gpio.PA
+net PL arisc.gpio.PL
+
+net PL arisc.stepgen.0.dir-port
+setp arisc.stepgen.0.dir-pin 10
+setp arisc.stepgen.0.dir-inv 0
+
+net PA arisc.stepgen.0.step-port
+setp arisc.stepgen.0.step-pin 15
+setp arisc.stepgen.0.step-inv 1
+
 start
 
-show pin arisc
+show pin arisc.stepgen
