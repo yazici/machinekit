@@ -339,25 +339,49 @@ static void stepgen_update_freq(void *arg, long period)
     // +++  capture position in steps (counts, rawcounts)
     //      start output
     //      update frequency and continue output
-    //      stop output if in position
+    // +++  stop output if in position
 
     static uint8_t ch;
 
     for ( ch = ch_cnt; ch--; )
     {
-        // abort output if channel is disabled
-        if ( gp.task && !g.enable ) abort_output(ch);
+        if ( g.enable )
+        {
+            // recalculate private and public data
+            update_pins(ch);
+            update_accel_max(ch);
+            update_vel_max(ch);
 
-        // capture position in steps (counts, rawcounts)
-        update_counts(ch);
+            if ( g.task )
+            {
+                // stop output if in position
+                if ( gp.task_counts == g.counts )
+                {
+                    abort_output(ch);
+                    abort_task(ch);
+                    continue;
+                }
 
-        // abort task
-        if ( gp.task && !g.enable ) { abort_task(ch); continue; }
+                // update frequency and continue output
 
-        // recalculate private and public data
-        update_pins(ch);
-        update_accel_max(ch);
-        update_vel_max(ch);
+            }
+            else
+            {
+                // start output
+
+            }
+        }
+        else
+        {
+            // abort output if channel is disabled
+            if ( gp.task ) abort_output(ch);
+
+            // capture position in steps (counts, rawcounts)
+            update_counts(ch);
+
+            // abort task if channel is disabled
+            if ( gp.task ) abort_task(ch);
+        }
     }
 }
 
@@ -366,19 +390,33 @@ static void stepgen_make_pulses(void *arg, long period)
     // TODO:
     // +++  abort output if channel is disabled
     // +++  capture position in steps (rawcounts)
+    // +++  stop output if in position
 
     static uint8_t ch;
 
     for ( ch = ch_cnt; ch--; )
     {
-        // abort output if channel is disabled
-        // capture position in steps (rawcounts)
+        if ( !gp.task ) continue;
 
-        if ( gp.task && !g.enable ) abort_output(ch);
+        if ( g.enable )
+        {
+            // capture position in steps (rawcounts)
+            update_counts(ch);
 
-        update_counts(ch);
-
-        if ( gp.task && !g.enable ) abort_task(ch);
+            // stop output if in position
+            if ( gp.task_counts == g.counts )
+            {
+                abort_output(ch);
+                abort_task(ch);
+            }
+        }
+        else
+        {
+            // abort output if channel is disabled
+            abort_output(ch);
+            update_counts(ch);
+            abort_task(ch);
+        }
     }
 }
 
