@@ -22,7 +22,7 @@
 
 // DATA
 
-#define STEPGEN_CH_CNT_MAX 10
+#define STEPGEN_CH_CNT_MAX 16
 
 #define g *sg[ch]
 #define gp sg[ch]
@@ -63,8 +63,8 @@ typedef struct
     hal_u32_t step_len_old; // private
     hal_u32_t *dir_setup;
     hal_u32_t *dir_hold;
-    hal_s32_t *counts;
-    hal_s32_t *rawcounts;
+    hal_s64_t *counts;
+    hal_s64_t *rawcounts;
     hal_u32_t *step_port;
     hal_u32_t *step_pin;
     hal_bit_t *step_inv;
@@ -83,12 +83,12 @@ typedef struct
     hal_u32_t dir_pulsgen_ch; // private
     hal_bit_t dir_ch_ready; // private
 
-    hal_u32_t steps_freq; // private
-    hal_u32_t steps_freq_max; // private
-    hal_u32_t steps_accel_max; // private
+    hal_u64_t steps_freq; // private
+    hal_u64_t steps_freq_max; // private
+    hal_u64_t steps_accel_max; // private
 
     hal_u32_t task; // private
-    hal_s32_t task_counts; // private
+    hal_s64_t task_counts; // private
 
     // aren't available for the `make_pulses()`
 
@@ -184,6 +184,12 @@ update_accel_max(uint8_t ch)
         gp.steps_accel_max = (hal_u32_t) (g.accel_max * g.pos_scale);
         gp.accel_max_old   = g.accel_max;
     }
+}
+
+static void
+update_pos_scale(uint8_t ch)
+{
+    if ( g.pos_scale < 1e-20 && g.pos_scale > -1e-20 ) g.pos_scale = 1.0;
 }
 
 static void
@@ -321,7 +327,7 @@ static void stepgen_capture_pos(void *arg, long period)
     for ( ch = ch_cnt; ch--; )
     {
         // if POS_SCALE == 0.0 then POS_SCALE = 1.0
-        if ( g.pos_scale < 1e-20 && g.pos_scale > -1e-20 ) g.pos_scale = 1.0;
+        update_pos_scale(ch);
 
         // capture position in steps (counts, rawcounts)
         update_counts(ch);
@@ -349,6 +355,7 @@ static void stepgen_update_freq(void *arg, long period)
         {
             // recalculate private and public data
             update_pins(ch);
+            update_pos_scale(ch);
             update_accel_max(ch);
             update_vel_max(ch);
 
@@ -465,8 +472,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT_PIN(HAL_IN,float,pos_cmd,"position-cmd", 0.0);
         EXPORT_PIN(HAL_OUT,float,pos_fb,"position-fb", 0.0);
         EXPORT_PIN(HAL_OUT,float,freq,"frequency", 0.0);
-        EXPORT_PIN(HAL_OUT,s32,counts,"counts", 0);
-        EXPORT_PIN(HAL_OUT,s32,rawcounts,"rawcounts", 0);
+        EXPORT_PIN(HAL_OUT,s64,counts,"counts", 0);
+        EXPORT_PIN(HAL_OUT,s64,rawcounts,"rawcounts", 0);
 
         gp.step_pulsgen_ch0 = pulsgen_ch++;
         gp.step_pulsgen_ch1 = pulsgen_ch++;
