@@ -163,9 +163,15 @@ dir_state_set(uint8_t ch, hal_bit_t state)
 static void
 abort_output(uint8_t ch)
 {
-    pulsgen_task_abort(gp.step_pulsgen_ch0);
-    pulsgen_task_abort(gp.step_pulsgen_ch1);
-    pulsgen_task_abort(gp.dir_pulsgen_ch);
+    if ( gp.step_ch_ready )
+    {
+        pulsgen_task_abort(gp.step_pulsgen_ch0);
+        pulsgen_task_abort(gp.step_pulsgen_ch1);
+    }
+    if ( gp.dir_ch_ready )
+    {
+        pulsgen_task_abort(gp.dir_pulsgen_ch);
+    }
 }
 
 static void
