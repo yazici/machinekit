@@ -314,7 +314,7 @@ update_counts(uint8_t ch)
 }
 
 static void
-update_freq(uint8_t ch, long period)
+update_steps_freq(uint8_t ch, long period)
 {
     static hal_s64_t steps_freq_new;
 
@@ -392,7 +392,7 @@ static void stepgen_update_freq(void *arg, long period)
     // +++  capture position in steps (counts, rawcounts)
     //      start output
     //      update frequency and continue output
-    //      stop output if in position
+    // +++  stop output if in position
 
     static uint8_t ch, freq_state_old;
     static int8_t dir, dir_new;
@@ -407,7 +407,7 @@ static void stepgen_update_freq(void *arg, long period)
             update_pos_scale(ch);
             update_accel_max(ch);
             update_vel_max(ch);
-            update_freq(ch, gp.period_old);
+            update_steps_freq(ch, gp.period_old);
 
             // stop output
             if ( gp.task ) abort_output(ch);
@@ -446,7 +446,7 @@ static void stepgen_update_freq(void *arg, long period)
 
             // calculate new frequency
             steps_freq_old = gp.steps_freq;
-            update_freq(ch, period);
+            update_steps_freq(ch, period);
 
             // if we have something to do
             if ( gp.steps_freq )
