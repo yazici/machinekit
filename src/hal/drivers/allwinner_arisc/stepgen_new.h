@@ -187,7 +187,7 @@ static void
 abort_task(uint8_t ch)
 {
     gp.task        = TASK_IDLE;
-    gp.freq_state   = _STOP;
+    gp.freq_state  = _STOP;
     gp.steps_freq  = 0;
     gp.freq        = 0;
 }
@@ -313,6 +313,45 @@ update_counts(uint8_t ch)
     g.counts = g.rawcounts;
 }
 
+static void
+update_freq(uint8_t ch, long period)
+{
+    static hal_s64_t steps_freq_new;
+
+    switch ( gp.freq_state )
+    {
+        case _STOP:
+            gp.steps_freq = 0;
+            break;
+
+        case _ACCEL:
+            if ( !gp.steps_accel_max )
+            {
+                gp.steps_freq = gp.steps_freq_max;
+            }
+            else
+            {
+                gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period / 1000000000;
+                if ( gp.steps_freq_max && gp.steps_freq >= gp.steps_freq_max )
+                {
+                    gp.steps_freq = gp.steps_freq_max;
+                }
+            }
+            break;
+
+        case _DECCEL:
+            if ( !gp.steps_accel_max )
+            {
+                gp.steps_freq = 0;
+            }
+            else
+            {
+                steps_freq_new = gp.steps_freq - gp.steps_accel_max * period / 1000000000;
+                gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
+            }
+    }
+}
+
 
 
 
@@ -368,6 +407,7 @@ static void stepgen_update_freq(void *arg, long period)
             update_pos_scale(ch);
             update_accel_max(ch);
             update_vel_max(ch);
+            update_freq(ch, gp.period_old);
 
             // stop output
             if ( gp.task ) abort_output(ch);
@@ -377,19 +417,6 @@ static void stepgen_update_freq(void *arg, long period)
 
             // set target position in counts
             gp.task_counts = (hal_s64_t) (g.pos_cmd * g.pos_scale);
-
-            // update gp.steps_freq before any calculations
-            switch ( gp.freq_state )
-            {
-                case _STOP: gp.steps_freq = 0; break;
-                case _ACCEL:
-                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * gp.period_old / 1000000000;
-                    if ( gp.steps_freq >= gp.steps_freq_max ) gp.steps_freq = gp.steps_freq_max;
-                    break;
-                case _DECCEL:
-                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * gp.period_old / 1000000000;
-                    gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
-            }
 
             // get DIR states
             dir     = dir_state_get(ch);
@@ -403,7 +430,7 @@ static void stepgen_update_freq(void *arg, long period)
                 if ( gp.task_counts == g.counts )   gp.freq_state = _STOP;
                 else                                gp.freq_state = _ACCEL;
             }
-            else  // frequency > 0
+            else // frequency > 0
             {
                 counts_deccel = g.counts + dir * (gp.steps_freq * gp.steps_freq_max / gp.steps_accel_max / 2);
 
@@ -417,24 +444,9 @@ static void stepgen_update_freq(void *arg, long period)
                 }
             }
 
-
-            // TODO - what if gp.steps_accel_max == 0 OR gp.steps_freq_max == 0 ?
-
-
             // calculate new frequency
             steps_freq_old = gp.steps_freq;
-            switch ( gp.freq_state )
-            {
-                case _STOP: gp.steps_freq = 0; break;
-                case _ACCEL:
-                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period / 1000000000;
-                    if ( gp.steps_freq >= gp.steps_freq_max ) gp.steps_freq = gp.steps_freq_max;
-                    break;
-                case _DECCEL:
-                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * period / 1000000000;
-                    gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
-            }
-            g.freq = ((hal_float_t)gp.steps_freq) / g.pos_scale;
+            update_freq(ch, period);
 
             // if we have something to do
             if ( gp.steps_freq )
@@ -443,6 +455,8 @@ static void stepgen_update_freq(void *arg, long period)
             }
             // nothing to do
             else gp.task = TASK_IDLE;
+
+            g.freq = ((hal_float_t)gp.steps_freq) / g.pos_scale;
         }
         else if ( gp.task )
         {
