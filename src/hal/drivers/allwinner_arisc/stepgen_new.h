@@ -52,6 +52,14 @@ enum
     TASK_REV_DIR_FWD
 };
 
+enum
+{
+    _STOP,
+    _ACCEL,
+    _CONST,
+    _DECCEL,
+};
+
 typedef struct
 {
     // available for all functions
@@ -140,24 +148,24 @@ step_state_get(uint8_t ch)
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
 }
 
-static hal_bit_t
+static int8_t
 dir_state_get(uint8_t ch)
 {
-    return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 0 : 1;
+    return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 1 : -1;
 }
 
 static void
 step_state_set(uint8_t ch, hal_bit_t state)
 {
-    if ( g.step_inv ^ state ) gpio_pin_clear (g.step_port, g.step_pin);
-    else                       gpio_pin_set   (g.step_port, g.step_pin);
+    if ( g.step_inv ^ state )   gpio_pin_clear (g.step_port, g.step_pin);
+    else                        gpio_pin_set   (g.step_port, g.step_pin);
 }
 
 static void
 dir_state_set(uint8_t ch, hal_bit_t state)
 {
-    if ( g.dir_inv ^ state )  gpio_pin_clear (g.dir_port, g.dir_pin);
-    else                       gpio_pin_set   (g.dir_port, g.dir_pin);
+    if ( g.dir_inv ^ state )    gpio_pin_clear (g.dir_port, g.dir_pin);
+    else                        gpio_pin_set   (g.dir_port, g.dir_pin);
 }
 
 static void
@@ -351,9 +359,11 @@ static void stepgen_update_freq(void *arg, long period)
     // +++  capture position in steps (counts, rawcounts)
     //      start output
     //      update frequency and continue output
-    // +++  stop output if in position
+    //      stop output if in position
 
-    static uint8_t ch;
+    static uint8_t ch, todo;
+    static int8_t dir, dir_new;
+    static hal_s64_t counts_deccel, steps_freq_old, steps_freq_new;
 
     for ( ch = ch_cnt; ch--; )
     {
@@ -365,35 +375,70 @@ static void stepgen_update_freq(void *arg, long period)
             update_accel_max(ch);
             update_vel_max(ch);
 
-            if ( g.task )
-            {
-                // stop output if in position
-                if ( gp.task_counts == g.counts )
-                {
-                    abort_output(ch);
-                    abort_task(ch);
-                    continue;
-                }
-
-                // update frequency and continue output
-
-            }
-            else
-            {
-                // start output
-
-            }
-        }
-        else
-        {
-            // abort output if channel is disabled
+            // stop output
             if ( gp.task ) abort_output(ch);
 
             // capture position in steps (counts, rawcounts)
             update_counts(ch);
 
-            // abort task if channel is disabled
-            if ( gp.task ) abort_task(ch);
+            // set target position in counts
+            gp.task_counts = (hal_s64_t) (g.pos_cmd * g.pos_scale);
+
+            // get DIR states
+            dir     = dir_state_get(ch);
+            dir_new = gp.task_counts > g.counts ? 1 : -1;
+            dir_new = gp.steps_freq ? dir : dir_new;
+
+            // calculate what to do
+            todo = _STOP;
+            if ( !gp.steps_freq ) // frequency == 0
+            {
+                if ( gp.task_counts == g.counts )   todo = _STOP;
+                else                                todo = _ACCEL;
+            }
+            else  // frequency > 0
+            {
+                counts_deccel = g.counts + dir * (gp.steps_freq * gp.steps_freq_max / gp.steps_accel_max / 2);
+
+                if ( gp.steps_freq < gp.steps_freq_max )
+                {
+                    todo = counts_deccel >= gp.task_counts ? _DECCEL : _ACCEL;
+                }
+                else if ( counts_deccel < gp.task_counts )
+                {
+                    todo = _CONST;
+                }
+            }
+
+            // calculate new frequency
+            // TODO - what if gp.steps_accel_max == 0 OR gp.steps_freq_max == 0 ?
+            steps_freq_old = gp.steps_freq;
+            switch ( todo )
+            {
+                case _STOP: gp.steps_freq = 0; break;
+                case _ACCEL:
+                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period;
+                    if ( gp.steps_freq >= gp.steps_freq_max ) gp.steps_freq = gp.steps_freq_max;
+                    break;
+                case _DECCEL:
+                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * period;
+                    gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
+            }
+            g.freq = ((hal_float_t)gp.steps_freq) / g.pos_scale;
+
+            // if we have something to do
+            if ( gp.steps_freq )
+            {
+                // TODO - setup pulsgens
+            }
+            // nothing to do
+            else gp.task = TASK_IDLE;
+        }
+        else if ( gp.task )
+        {
+            abort_output(ch);
+            update_counts(ch);
+            abort_task(ch);
         }
     }
 }
@@ -403,7 +448,6 @@ static void stepgen_make_pulses(void *arg, long period)
     // TODO:
     // +++  abort output if channel is disabled
     // +++  capture position in steps (rawcounts)
-    // +++  stop output if in position
 
     static uint8_t ch;
 
@@ -415,13 +459,6 @@ static void stepgen_make_pulses(void *arg, long period)
         {
             // capture position in steps (rawcounts)
             update_counts(ch);
-
-            // stop output if in position
-            if ( gp.task_counts == g.counts )
-            {
-                abort_output(ch);
-                abort_task(ch);
-            }
         }
         else
         {
