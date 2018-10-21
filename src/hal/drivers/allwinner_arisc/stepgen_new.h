@@ -94,6 +94,8 @@ typedef struct
     hal_u64_t steps_freq; // private
     hal_u64_t steps_freq_max; // private
     hal_u64_t steps_accel_max; // private
+    hal_u32_t freq_state; // private
+    long period_old; // private
 
     hal_u32_t task; // private
     hal_s64_t task_counts; // private
@@ -106,7 +108,6 @@ typedef struct
     hal_float_t accel_max_old; // private
     hal_float_t *pos_scale;
     hal_float_t *pos_cmd;
-    hal_float_t pos_cmd_old; // private
     hal_float_t *pos_fb;
     hal_float_t *freq;
 } stepgen_ch_t;
@@ -186,6 +187,7 @@ static void
 abort_task(uint8_t ch)
 {
     gp.task        = TASK_IDLE;
+    gp.freq_state   = _STOP;
     gp.steps_freq  = 0;
     gp.freq        = 0;
 }
@@ -262,61 +264,53 @@ update_pins(uint8_t ch)
     }
 }
 
-static hal_s32_t
-get_rawcounts(uint8_t ch)
+static void
+update_counts(uint8_t ch)
 {
-    if ( !gp.task ) return g.rawcounts;
+    if ( !gp.task ) return;
 
-    int32_t counts = g.rawcounts;
     uint32_t step_toggles0, step_toggles1, dir_toggles;
 
     switch ( gp.task )
     {
         case TASK_FWD:
-            counts += pulsgen_task_toggles(gp.step_pulsgen_ch0) / 2;
+            g.rawcounts += pulsgen_task_toggles(gp.step_pulsgen_ch0) / 2;
             break;
 
         case TASK_REV:
-            counts -= pulsgen_task_toggles(gp.step_pulsgen_ch0) / 2;
+            g.rawcounts -= pulsgen_task_toggles(gp.step_pulsgen_ch0) / 2;
             break;
 
         case TASK_DIR_FWD:
             step_toggles0 = pulsgen_task_toggles(gp.step_pulsgen_ch0);
             dir_toggles   = pulsgen_task_toggles(gp.dir_pulsgen_ch);
-            counts += (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
+            g.rawcounts += (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
             break;
 
         case TASK_DIR_REV:
             step_toggles0 = pulsgen_task_toggles(gp.step_pulsgen_ch0);
             dir_toggles   = pulsgen_task_toggles(gp.dir_pulsgen_ch);
-            counts -= (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
+            g.rawcounts -= (dir_toggles ? step_toggles0 : -step_toggles0) / 2;
             break;
 
         case TASK_FWD_DIR_REV:
             step_toggles0 = pulsgen_task_toggles(gp.step_pulsgen_ch0);
             step_toggles1 = pulsgen_task_toggles(gp.step_pulsgen_ch1);
             dir_toggles   = pulsgen_task_toggles(gp.dir_pulsgen_ch);
-            counts += step_toggles0 / 2;
-            counts -= (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
+            g.rawcounts += step_toggles0 / 2;
+            g.rawcounts -= (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
 
         case TASK_REV_DIR_FWD:
             step_toggles0 = pulsgen_task_toggles(gp.step_pulsgen_ch0);
             step_toggles1 = pulsgen_task_toggles(gp.step_pulsgen_ch1);
             dir_toggles   = pulsgen_task_toggles(gp.dir_pulsgen_ch);
-            counts -= step_toggles0 / 2;
-            counts += (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
+            g.rawcounts -= step_toggles0 / 2;
+            g.rawcounts += (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
     }
 
-    return counts;
-}
-
-static void
-update_counts(uint8_t ch)
-{
-    g.rawcounts = get_rawcounts(ch);
-    g.counts    = g.rawcounts;
+    g.counts = g.rawcounts;
 }
 
 
@@ -361,7 +355,7 @@ static void stepgen_update_freq(void *arg, long period)
     //      update frequency and continue output
     //      stop output if in position
 
-    static uint8_t ch, todo;
+    static uint8_t ch, freq_state_old;
     static int8_t dir, dir_new;
     static hal_s64_t counts_deccel, steps_freq_old, steps_freq_new;
 
@@ -384,17 +378,30 @@ static void stepgen_update_freq(void *arg, long period)
             // set target position in counts
             gp.task_counts = (hal_s64_t) (g.pos_cmd * g.pos_scale);
 
+            // update gp.steps_freq before any calculations
+            switch ( gp.freq_state )
+            {
+                case _STOP: gp.steps_freq = 0; break;
+                case _ACCEL:
+                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * gp.period_old / 1000000000;
+                    if ( gp.steps_freq >= gp.steps_freq_max ) gp.steps_freq = gp.steps_freq_max;
+                    break;
+                case _DECCEL:
+                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * gp.period_old / 1000000000;
+                    gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
+            }
+
             // get DIR states
             dir     = dir_state_get(ch);
             dir_new = gp.task_counts > g.counts ? 1 : -1;
             dir_new = gp.steps_freq ? dir : dir_new;
 
             // calculate what to do
-            todo = _STOP;
+            freq_state_old = gp.freq_state;
             if ( !gp.steps_freq ) // frequency == 0
             {
-                if ( gp.task_counts == g.counts )   todo = _STOP;
-                else                                todo = _ACCEL;
+                if ( gp.task_counts == g.counts )   gp.freq_state = _STOP;
+                else                                gp.freq_state = _ACCEL;
             }
             else  // frequency > 0
             {
@@ -402,26 +409,29 @@ static void stepgen_update_freq(void *arg, long period)
 
                 if ( gp.steps_freq < gp.steps_freq_max )
                 {
-                    todo = counts_deccel >= gp.task_counts ? _DECCEL : _ACCEL;
+                    gp.freq_state = counts_deccel >= gp.task_counts ? _DECCEL : _ACCEL;
                 }
                 else if ( counts_deccel < gp.task_counts )
                 {
-                    todo = _CONST;
+                    gp.freq_state = _CONST;
                 }
             }
 
-            // calculate new frequency
+
             // TODO - what if gp.steps_accel_max == 0 OR gp.steps_freq_max == 0 ?
+
+
+            // calculate new frequency
             steps_freq_old = gp.steps_freq;
-            switch ( todo )
+            switch ( gp.freq_state )
             {
                 case _STOP: gp.steps_freq = 0; break;
                 case _ACCEL:
-                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period;
+                    gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period / 1000000000;
                     if ( gp.steps_freq >= gp.steps_freq_max ) gp.steps_freq = gp.steps_freq_max;
                     break;
                 case _DECCEL:
-                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * period;
+                    steps_freq_new = gp.steps_freq - gp.steps_accel_max * period / 1000000000;
                     gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
             }
             g.freq = ((hal_float_t)gp.steps_freq) / g.pos_scale;
@@ -441,6 +451,8 @@ static void stepgen_update_freq(void *arg, long period)
             abort_task(ch);
         }
     }
+
+    gp.period_old = period;
 }
 
 static void stepgen_make_pulses(void *arg, long period)
@@ -532,7 +544,6 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.dir_pin_old = UINT32_MAX;
         gp.dir_port_old = UINT32_MAX;
         gp.dir_ch_ready = 0;
-        gp.pos_cmd_old = 0.0;
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
         gp.steps_freq = 0;
@@ -540,7 +551,9 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.steps_accel_max = 0;
 
         gp.task = 0;
+        gp.freq_state = _STOP;
         gp.task_counts = 0;
+        gp.period_old = 0;
     }
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 
