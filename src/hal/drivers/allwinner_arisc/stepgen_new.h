@@ -472,7 +472,7 @@ static void stepgen_update_freq(void *arg, long period)
                         if ( steps_freq_old )
                         {
                             steps = (uint32_t) (steps_freq_old * gp.period_old / 1000000000);
-                            step_hold = (period - steps*g.step_len) / steps;
+                            step_hold = (gp.period_old - steps*g.step_len) / steps;
                             dir_setup = g.dir_setup > step_hold ? g.dir_setup - step_hold : 0;
                         }
                         else dir_setup = 0;
