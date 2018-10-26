@@ -390,11 +390,12 @@ static void stepgen_update_freq(void *arg, long period)
     // +++  abort output if channel is disabled
     // +++  recalculate private and public data
     // +++  capture position in steps (counts, rawcounts)
-    //      start output
-    //      update frequency and continue output
+    // +++  start output
+    // +++  update frequency and continue output
     // +++  stop output if in position
 
     static uint8_t ch, freq_state_old;
+    static uint32_t steps, step_hold, dir_setup;
     static int8_t dir, dir_new;
     static hal_s64_t counts_deccel, steps_freq_old, steps_freq_new;
 
@@ -451,7 +452,43 @@ static void stepgen_update_freq(void *arg, long period)
             // if we have something to do
             if ( gp.steps_freq )
             {
-                // TODO - setup pulsgens
+                if ( dir == dir_new )
+                {
+                    if ( gp.step_ch_ready ) // if step pins was set
+                    {
+                        steps = (uint32_t) (gp.steps_freq * period / 1000000000);
+                        step_hold = (period - steps*g.step_len) / steps;
+
+                        pulsgen_task_setup(gp.step_pulsgen_ch0, 4*steps, g.step_len, step_hold, 0);
+
+                        gp.task = dir > 0 ? TASK_FWD : TASK_REV;
+                    }
+                    else abort_task(ch);
+                }
+                else
+                {
+                    if ( gp.dir_ch_ready && gp.step_ch_ready ) // if step and dir pins were set
+                    {
+                        if ( steps_freq_old )
+                        {
+                            steps = (uint32_t) (steps_freq_old * gp.period_old / 1000000000);
+                            step_hold = (period - steps*g.step_len) / steps;
+                            dir_setup = g.dir_setup > step_hold ? g.dir_setup - step_hold : 0;
+                        }
+                        else dir_setup = 0;
+
+                        // todo - setup DIR channel
+
+                        steps = (uint32_t) (gp.steps_freq * period / 1000000000);
+                        step_hold = (period - steps*g.step_len) / steps;
+
+                        pulsgen_task_setup(gp.dir_pulsgen_ch, 1, dir_setup, g.dir_hold, 0);
+                        pulsgen_task_setup(gp.step_pulsgen_ch0, 4*steps, g.step_len, step_hold, dir_setup + g.dir_hold);
+
+                        gp.task = dir_new > 0 ? TASK_DIR_FWD : TASK_DIR_REV;
+                    }
+                    else abort_task(ch);
+                }
             }
             // nothing to do
             else gp.task = TASK_IDLE;
