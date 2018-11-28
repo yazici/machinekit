@@ -100,6 +100,8 @@ typedef struct
     hal_u32_t task; // private
     hal_s64_t task_counts; // private
 
+    hal_bit_t ctrl_type; // private
+
     // aren't available for the `make_pulses()`
 
     hal_float_t *vel_max;
@@ -122,8 +124,9 @@ typedef struct
 
 // VAR
 
-static int8_t *stepgen_num_chan = "0";
-RTAPI_MP_STRING(stepgen_num_chan, "stepgen channels count");
+static int8_t *stepgen_ctrl_type;
+RTAPI_MP_STRING(stepgen_ctrl_type, "stepgen channels control type, comma separated");
+
 
 static stepgen_ch_t *sg;
 static uint8_t ch_cnt = 0;
@@ -545,10 +548,18 @@ static void stepgen_make_pulses(void *arg, long period)
 static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
 {
     int32_t r, ch, pulsgen_ch;
+    int8_t *data = stepgen_ctrl_type, *token, type[STEPGEN_CH_CNT_MAX] = {0};
 
     // get num_chan count
 
-    ch_cnt = (uint8_t) strtoul((const char *)stepgen_num_chan, NULL, 10);
+    while ( (token = strtok(data, ",")) != NULL )
+    {
+        if ( data != NULL ) data = NULL;
+
+        if      ( token[0] == 'P' || token[0] == 'p' ) type[ch_cnt++] = 0;
+        else if ( token[0] == 'V' || token[0] == 'v' ) type[ch_cnt++] = 1;
+    }
+
     if ( !ch_cnt ) return 0;
     if ( ch_cnt > STEPGEN_CH_CNT_MAX ) ch_cnt = STEPGEN_CH_CNT_MAX;
 
@@ -605,6 +616,8 @@ static int32_t stepgen_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.freq_state = _STOP;
         gp.task_counts = 0;
         gp.period_old = 0;
+
+        gp.ctrl_type = type[ch];
     }
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 
