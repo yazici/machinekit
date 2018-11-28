@@ -1,7 +1,7 @@
 /**
  * @file    arisc.c
  * @brief   Driver for the Allwinner ARISC CNC firmware
- * @note    ARISC CNC firmware: https://github.com/orangecnc/h3_arisc_firmware
+ * @note    ARISC CNC firmware: https://github.com/orange-cnc/h3_arisc_firmware
  * @author  Mikhail Vydrenko (mikhail@vydrenko.ru)
  */
 
