@@ -51,7 +51,7 @@ static struct msg_t * msg_arisc[MSG_MAX_CNT] = {0};
 static struct msg_t * msg_arm[MSG_MAX_CNT] = {0};
 static uint8_t msg_buf[MSG_LEN] = {0};
 
-static uint32_t *vrt_block_addr = 0;
+static uint32_t *msg_vrt_block_addr = 0;
 
 
 
@@ -90,11 +90,11 @@ int32_t msg_mem_init
     phy_block_addr = msg_block_addr - vrt_offset;
 
     // make a block of phy memory visible in our user space
-    vrt_block_addr = mmap(NULL, 2*MSG_BLOCK_SIZE, PROT_READ | PROT_WRITE,
+    msg_vrt_block_addr = mmap(NULL, 2*MSG_BLOCK_SIZE, PROT_READ | PROT_WRITE,
         MAP_SHARED, mem_fd, phy_block_addr);
 
     // exit program if mmap is failed
-    if (vrt_block_addr == MAP_FAILED)
+    if (msg_vrt_block_addr == MAP_FAILED)
     {
         rtapi_print_msg(RTAPI_MSG_ERR, "%s: [MSG] mmap() failed\n", comp_name);
         return -2;
@@ -104,13 +104,13 @@ int32_t msg_mem_init
     close(mem_fd);
 
     // adjust offset to correct value
-    vrt_block_addr += (vrt_offset/4);
+    msg_vrt_block_addr += (vrt_offset/4);
 
     // assign messages pointers
     for ( m = 0; m < MSG_MAX_CNT; ++m )
     {
-        msg_arisc[m] = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN)/4);
-        msg_arm[m]   = (struct msg_t *) (vrt_block_addr + (m * MSG_MAX_LEN + MSG_CPU_BLOCK_SIZE)/4);
+        msg_arisc[m] = (struct msg_t *) (msg_vrt_block_addr + (m * MSG_MAX_LEN)/4);
+        msg_arm[m]   = (struct msg_t *) (msg_vrt_block_addr + (m * MSG_MAX_LEN + MSG_CPU_BLOCK_SIZE)/4);
     }
 
     return 0;
@@ -118,7 +118,7 @@ int32_t msg_mem_init
 
 void msg_mem_deinit(void)
 {
-    munmap(vrt_block_addr, 2*MSG_BLOCK_SIZE);
+    munmap(msg_vrt_block_addr, 2*MSG_BLOCK_SIZE);
 }
 
 

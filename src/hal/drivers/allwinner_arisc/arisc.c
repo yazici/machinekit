@@ -12,8 +12,8 @@
 #include "cpu.h"
 #include "msg.h"
 #include "gpio.h"
-#include "stepgen_new.h"
 #include "encoder.h"
+#include "stepgen.h"
 
 #if !defined(TARGET_PLATFORM_ALLWINNER)
 //#error "This driver is for the Allwinner platform only"
@@ -47,7 +47,7 @@ int32_t rtapi_app_main(void)
     cpu_id_get();
     if ( msg_mem_init(cpu_id, comp_name) ) EXIT;
     if ( gpio_malloc_and_export(comp_name, comp_id) ) EXIT;
-    if ( stepgen_malloc_and_export(comp_name, comp_id) ) EXIT;
+    if ( sg_malloc_and_export(comp_name, comp_id) ) EXIT;
 
     // driver ready to work
     hal_ready(comp_id);
