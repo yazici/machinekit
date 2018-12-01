@@ -52,14 +52,6 @@ enum
     TASK_REV_DIR_FWD
 };
 
-enum
-{
-    _STOP,
-    _ACCEL,
-    _CONST,
-    _DECCEL,
-};
-
 typedef struct
 {
     // available for all functions
@@ -71,8 +63,8 @@ typedef struct
     hal_u32_t step_len_old; // private
     hal_u32_t *dir_setup;
     hal_u32_t *dir_hold;
-    hal_s64_t *counts;
-    hal_s64_t *rawcounts;
+    hal_s32_t *counts;
+    hal_s32_t *rawcounts;
     hal_u32_t *step_port;
     hal_u32_t *step_pin;
     hal_bit_t *step_inv;
@@ -91,15 +83,12 @@ typedef struct
     hal_u32_t dir_pulsgen_ch; // private
     hal_bit_t dir_ch_ready; // private
 
-    hal_u64_t steps_freq; // private
-    hal_u64_t steps_freq_max; // private
-    hal_u64_t steps_accel_max; // private
-    hal_u32_t freq_state; // private
-    long period_old; // private
+    hal_u32_t step_period; // private, current step period, ns
+    hal_s32_t step_wait; // private, `step_wait <= 0` means `it's time to make a step`
+    hal_u32_t steps_freq_max; // private
+    hal_u32_t steps_accel_max; // private
 
     hal_u32_t task; // private
-    hal_s64_t task_counts; // private
-
     hal_bit_t ctrl_type; // private
 
     // aren't available for the `make_pulses()`
@@ -110,6 +99,7 @@ typedef struct
     hal_float_t accel_max_old; // private
     hal_float_t *pos_scale;
     hal_float_t *pos_cmd;
+    hal_float_t *vel_cmd;
     hal_float_t *pos_fb;
     hal_float_t *freq;
 } stepgen_ch_t;
@@ -127,7 +117,6 @@ typedef struct
 static int8_t *stepgen_ctrl_type;
 RTAPI_MP_STRING(stepgen_ctrl_type, "stepgen channels control type, comma separated");
 
-
 static stepgen_ch_t *sg;
 static uint8_t sg_cnt = 0;
 
@@ -140,40 +129,34 @@ static uint8_t sg_cnt = 0;
 
 // TOOLS
 
-static hal_bit_t
-sg_floats_equal(hal_float_t f1, hal_float_t f2)
+static hal_bit_t sg_floats_equal(hal_float_t f1, hal_float_t f2)
 {
     return *((int64_t*) &f1) == *((int64_t*) &f2);
 }
 
-static hal_bit_t
-sg_step_state_get(uint8_t ch)
+static hal_bit_t sg_step_state_get(uint8_t ch)
 {
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
 }
 
-static int8_t
-sg_dir_state_get(uint8_t ch)
+static int8_t sg_dir_state_get(uint8_t ch)
 {
     return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 1 : -1;
 }
 
-static void
-sg_step_state_set(uint8_t ch, hal_bit_t state)
+static void sg_step_state_set(uint8_t ch, hal_bit_t state)
 {
     if ( g.step_inv ^ state )   gpio_pin_clear (g.step_port, g.step_pin);
     else                        gpio_pin_set   (g.step_port, g.step_pin);
 }
 
-static void
-sg_dir_state_set(uint8_t ch, hal_bit_t state)
+static void sg_dir_state_set(uint8_t ch, hal_bit_t state)
 {
     if ( g.dir_inv ^ state )    gpio_pin_clear (g.dir_port, g.dir_pin);
     else                        gpio_pin_set   (g.dir_port, g.dir_pin);
 }
 
-static void
-sg_abort_output(uint8_t ch)
+static void sg_abort_output(uint8_t ch)
 {
     if ( gp.step_ch_ready )
     {
@@ -186,17 +169,14 @@ sg_abort_output(uint8_t ch)
     }
 }
 
-static void
-sg_abort_task(uint8_t ch)
+static void sg_abort_task(uint8_t ch)
 {
     gp.task        = TASK_IDLE;
-    gp.freq_state  = _STOP;
-    gp.steps_freq  = 0;
+    gp.step_period = 0;
     gp.freq        = 0;
 }
 
-static void
-sg_update_accel_max(uint8_t ch)
+static void sg_update_accel_max(uint8_t ch)
 {
     if ( !sg_floats_equal(g.accel_max, gp.accel_max_old) )
     {
@@ -205,14 +185,12 @@ sg_update_accel_max(uint8_t ch)
     }
 }
 
-static void
-sg_update_pos_scale(uint8_t ch)
+static void sg_update_pos_scale(uint8_t ch)
 {
     if ( g.pos_scale < 1e-20 && g.pos_scale > -1e-20 ) g.pos_scale = 1.0;
 }
 
-static void
-sg_update_vel_max(uint8_t ch)
+static void sg_update_vel_max(uint8_t ch)
 {
     if ( !sg_floats_equal(g.vel_max, gp.vel_max_old) )
     {
@@ -230,8 +208,7 @@ sg_update_vel_max(uint8_t ch)
     }
 }
 
-static void
-sg_update_pins(uint8_t ch)
+static void sg_update_pins(uint8_t ch)
 {
     if ( g.step_port != gp.step_port_old    ||
          g.step_pin  != gp.step_pin_old     ||
@@ -267,8 +244,7 @@ sg_update_pins(uint8_t ch)
     }
 }
 
-static void
-sg_update_counts(uint8_t ch)
+static void sg_update_counts(uint8_t ch)
 {
     if ( !gp.task ) return;
 
@@ -312,47 +288,6 @@ sg_update_counts(uint8_t ch)
             g.rawcounts += (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
     }
-
-    g.counts = g.rawcounts;
-}
-
-static void
-sg_update_steps_freq(uint8_t ch, long period)
-{
-    static hal_s64_t steps_freq_new;
-
-    switch ( gp.freq_state )
-    {
-        case _STOP:
-            gp.steps_freq = 0;
-            break;
-
-        case _ACCEL:
-            if ( !gp.steps_accel_max )
-            {
-                gp.steps_freq = gp.steps_freq_max;
-            }
-            else
-            {
-                gp.steps_freq = gp.steps_freq + gp.steps_accel_max * period / 1000000000;
-                if ( gp.steps_freq_max && gp.steps_freq >= gp.steps_freq_max )
-                {
-                    gp.steps_freq = gp.steps_freq_max;
-                }
-            }
-            break;
-
-        case _DECCEL:
-            if ( !gp.steps_accel_max )
-            {
-                gp.steps_freq = 0;
-            }
-            else
-            {
-                steps_freq_new = gp.steps_freq - gp.steps_accel_max * period / 1000000000;
-                gp.steps_freq = steps_freq_new < 0 ? 0 : steps_freq_new;
-            }
-    }
 }
 
 
@@ -367,11 +302,6 @@ sg_update_steps_freq(uint8_t ch, long period)
 
 static void sg_capture_pos(void *arg, long period)
 {
-    // TODO:
-    // +++  if POS_SCALE == 0.0 then POS_SCALE = 1.0
-    // +++  capture position in steps (counts, rawcounts)
-    // +++  capture position in units
-
     static uint8_t ch;
 
     for ( ch = sg_cnt; ch--; )
@@ -381,6 +311,7 @@ static void sg_capture_pos(void *arg, long period)
 
         // capture position in steps (counts, rawcounts)
         sg_update_counts(ch);
+        g.counts = g.rawcounts;
 
         // capture position in units
         g.pos_fb = ((hal_float_t)g.counts) / g.pos_scale;
@@ -389,18 +320,7 @@ static void sg_capture_pos(void *arg, long period)
 
 static void sg_update_freq(void *arg, long period)
 {
-    // TODO:
-    // +++  abort output if channel is disabled
-    // +++  recalculate private and public data
-    // +++  capture position in steps (counts, rawcounts)
-    // +++  start output
-    // +++  update frequency and continue output
-    // +++  stop output if in position
-
-    static uint8_t ch, freq_state_old;
-    static uint32_t steps, step_hold, dir_setup;
-    static int8_t dir, dir_new;
-    static hal_s64_t counts_deccel, steps_freq_old, steps_freq_new;
+    static uint8_t ch;
 
     for ( ch = sg_cnt; ch--; )
     {
@@ -411,92 +331,17 @@ static void sg_update_freq(void *arg, long period)
             sg_update_pos_scale(ch);
             sg_update_accel_max(ch);
             sg_update_vel_max(ch);
-            sg_update_steps_freq(ch, gp.period_old);
 
             // stop output
             if ( gp.task ) sg_abort_output(ch);
 
             // capture position in steps (counts, rawcounts)
             sg_update_counts(ch);
+            g.counts = g.rawcounts;
 
-            // set target position in counts
-            gp.task_counts = (hal_s64_t) (g.pos_cmd * g.pos_scale);
 
-            // get DIR states
-            dir     = sg_dir_state_get(ch);
-            dir_new = gp.task_counts > g.counts ? 1 : -1;
-            dir_new = gp.steps_freq ? dir : dir_new;
 
-            // calculate what to do
-            freq_state_old = gp.freq_state;
-            if ( !gp.steps_freq ) // frequency == 0
-            {
-                if ( gp.task_counts == g.counts )   gp.freq_state = _STOP;
-                else                                gp.freq_state = _ACCEL;
-            }
-            else // frequency > 0
-            {
-                counts_deccel = g.counts + dir * (gp.steps_freq * gp.steps_freq_max / gp.steps_accel_max / 2);
 
-                if ( gp.steps_freq < gp.steps_freq_max )
-                {
-                    gp.freq_state = counts_deccel >= gp.task_counts ? _DECCEL : _ACCEL;
-                }
-                else if ( counts_deccel < gp.task_counts )
-                {
-                    gp.freq_state = _CONST;
-                }
-            }
-
-            // calculate new frequency
-            steps_freq_old = gp.steps_freq;
-            sg_update_steps_freq(ch, period);
-
-            // if we have something to do
-            if ( gp.steps_freq )
-            {
-                if ( dir == dir_new )
-                {
-                    if ( gp.step_ch_ready ) // if step pins was set
-                    {
-                        steps = (uint32_t) (gp.steps_freq * period / 1000000000);
-                        step_hold = (period - steps*g.step_len) / steps;
-
-                        pulsgen_task_setup(gp.step_pulsgen_ch0, 4*steps, g.step_len, step_hold, 0);
-
-                        gp.task = dir > 0 ? TASK_FWD : TASK_REV;
-                    }
-                    else sg_abort_task(ch);
-                }
-                else
-                {
-                    if ( gp.dir_ch_ready && gp.step_ch_ready ) // if step and dir pins were set
-                    {
-                        if ( steps_freq_old )
-                        {
-                            steps = (uint32_t) (steps_freq_old * gp.period_old / 1000000000);
-                            step_hold = (gp.period_old - steps*g.step_len) / steps;
-                            dir_setup = g.dir_setup > step_hold ? g.dir_setup - step_hold : 0;
-                        }
-                        else dir_setup = 0;
-
-                        // todo - setup DIR channel
-
-                        steps = (uint32_t) (gp.steps_freq * period / 1000000000);
-                        step_hold = (period - steps*g.step_len) / steps;
-
-                        pulsgen_task_setup(gp.dir_pulsgen_ch, 1, dir_setup, g.dir_hold, 0);
-                        pulsgen_task_setup(gp.step_pulsgen_ch0, 4*steps, g.step_len, step_hold, dir_setup + g.dir_hold);
-
-                        gp.task = dir_new > 0 ? TASK_DIR_FWD : TASK_DIR_REV;
-                    }
-                    else sg_abort_task(ch);
-                }
-            }
-            // nothing to do
-            else gp.task = TASK_IDLE;
-
-            g.freq = ((hal_float_t)gp.steps_freq) / g.pos_scale;
         }
         else if ( gp.task )
         {
@@ -505,16 +350,10 @@ static void sg_update_freq(void *arg, long period)
             sg_abort_task(ch);
         }
     }
-
-    gp.period_old = period;
 }
 
 static void sg_make_pulses(void *arg, long period)
 {
-    // TODO:
-    // +++  abort output if channel is disabled
-    // +++  capture position in steps (rawcounts)
-
     static uint8_t ch;
 
     for ( ch = sg_cnt; ch--; )
@@ -579,18 +418,20 @@ static int32_t sg_malloc_and_export(const char *comp_name, int32_t comp_id)
         EXPORT_PIN(HAL_IN,u32,dir_hold,"dirhold", 1000);
         EXPORT_PIN(HAL_IN,u32,step_port,"step-port", UINT32_MAX);
         EXPORT_PIN(HAL_IN,u32,step_pin,"step-pin", UINT32_MAX);
-        EXPORT_PIN(HAL_IN,bit,step_inv,"step-inv", 0);
+        EXPORT_PIN(HAL_IN,bit,step_inv,"step-invert", 0);
         EXPORT_PIN(HAL_IN,u32,dir_port,"dir-port", UINT32_MAX);
         EXPORT_PIN(HAL_IN,u32,dir_pin,"dir-pin", UINT32_MAX);
-        EXPORT_PIN(HAL_IN,bit,dir_inv,"dir-inv", 0);
+        EXPORT_PIN(HAL_IN,bit,dir_inv,"dir-invert", 0);
         EXPORT_PIN(HAL_IN,float,pos_scale,"position-scale", 1.0);
         EXPORT_PIN(HAL_IN,float,vel_max,"maxvel", 0.0);
         EXPORT_PIN(HAL_IN,float,accel_max,"maxaccel", 0.0);
-        EXPORT_PIN(HAL_IN,float,pos_cmd,"position-cmd", 0.0);
         EXPORT_PIN(HAL_OUT,float,pos_fb,"position-fb", 0.0);
         EXPORT_PIN(HAL_OUT,float,freq,"frequency", 0.0);
-        EXPORT_PIN(HAL_OUT,s64,counts,"counts", 0);
-        EXPORT_PIN(HAL_OUT,s64,rawcounts,"rawcounts", 0);
+        EXPORT_PIN(HAL_OUT,s32,counts,"counts", 0);
+        EXPORT_PIN(HAL_OUT,s32,rawcounts,"rawcounts", 0);
+
+        if ( type[ch] ) { EXPORT_PIN(HAL_IN,float,vel_cmd,"velocity-cmd", 0.0); }
+        else            { EXPORT_PIN(HAL_IN,float,pos_cmd,"position-cmd", 0.0); }
 
         gp.step_pulsgen_ch0 = pulsgen_ch++;
         gp.step_pulsgen_ch1 = pulsgen_ch++;
@@ -608,16 +449,14 @@ static int32_t sg_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.dir_ch_ready = 0;
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
-        gp.steps_freq = 0;
         gp.steps_freq_max = 0;
         gp.steps_accel_max = 0;
 
         gp.task = 0;
-        gp.freq_state = _STOP;
-        gp.task_counts = 0;
-        gp.period_old = 0;
 
         gp.ctrl_type = type[ch];
+        gp.step_period = 0;
+        gp.step_wait = 0;
     }
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 
