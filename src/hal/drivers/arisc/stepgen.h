@@ -56,52 +56,60 @@ typedef struct
 {
     // available for all functions
 
-    hal_bit_t *enable;
-    hal_u32_t *step_space;
-    hal_u32_t *step_len;
+    hal_bit_t *enable; // in
+    hal_u32_t *step_space; // in
+    hal_u32_t *step_len; // in
+    hal_u32_t *dir_setup; // in
+    hal_u32_t *dir_hold; // in
+    hal_u32_t *step_port; // in
+    hal_u32_t *step_pin; // in
+    hal_bit_t *step_inv; // in
+    hal_u32_t *dir_port; // in
+    hal_u32_t *dir_pin; // in
+    hal_bit_t *dir_inv; // in
+    hal_s32_t *counts; // out
+    hal_s32_t *rawcounts; // out
+
     hal_u32_t step_space_old; // private
     hal_u32_t step_len_old; // private
-    hal_u32_t *dir_setup;
-    hal_u32_t *dir_hold;
-    hal_s32_t *counts;
-    hal_s32_t *rawcounts;
-    hal_u32_t *step_port;
-    hal_u32_t *step_pin;
-    hal_bit_t *step_inv;
     hal_u32_t step_port_old; // private
     hal_u32_t step_pin_old; // private
     hal_bit_t step_inv_old; // private
     hal_u32_t step_pulsgen_ch0; // private
     hal_u32_t step_pulsgen_ch1; // private
     hal_bit_t step_ch_ready; // private
-    hal_u32_t *dir_port;
-    hal_u32_t *dir_pin;
-    hal_bit_t *dir_inv;
+
     hal_u32_t dir_port_old; // private
     hal_u32_t dir_pin_old; // private
     hal_bit_t dir_inv_old; // private
     hal_u32_t dir_pulsgen_ch; // private
     hal_bit_t dir_ch_ready; // private
 
-    hal_u32_t step_period; // private, current step period, ns
+    hal_s32_t period_cmd; // private
+    hal_s32_t counts_cmd; // private
+
+    hal_u32_t pulsgen_task; // private
+    hal_bit_t ctrl_type; // private
+
+    hal_s32_t step_period; // private, current step period, ns
     hal_s32_t step_wait; // private, `step_wait <= 0` means `it's time to make a step`
     hal_u32_t steps_freq_max; // private
     hal_u32_t steps_accel_max; // private
 
-    hal_u32_t task; // private
-    hal_bit_t ctrl_type; // private
-
     // aren't available for the `make_pulses()`
 
-    hal_float_t *vel_max;
-    hal_float_t *accel_max;
+    hal_float_t *vel_max; // in
+    hal_float_t *accel_max; // in
+    hal_float_t *pos_scale; // in
+    hal_float_t *pos_cmd; // in
+    hal_float_t *vel_cmd; // in
+    hal_float_t *pos_fb; // out
+    hal_float_t *freq; // out
+
     hal_float_t vel_max_old; // private
     hal_float_t accel_max_old; // private
-    hal_float_t *pos_scale;
-    hal_float_t *pos_cmd;
-    hal_float_t *vel_cmd;
-    hal_float_t *pos_fb;
-    hal_float_t *freq;
+    hal_float_t pos_cmd_old; // private
+    hal_float_t vel_cmd_old; // private
 } stepgen_ch_t;
 
 
@@ -134,6 +142,7 @@ static hal_bit_t sg_floats_equal(hal_float_t f1, hal_float_t f2)
     return *((int64_t*) &f1) == *((int64_t*) &f2);
 }
 
+#if 0
 static hal_bit_t sg_step_state_get(uint8_t ch)
 {
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
@@ -155,6 +164,7 @@ static void sg_dir_state_set(uint8_t ch, hal_bit_t state)
     if ( g.dir_inv ^ state )    gpio_pin_clear (g.dir_port, g.dir_pin);
     else                        gpio_pin_set   (g.dir_port, g.dir_pin);
 }
+#endif
 
 static void sg_abort_output(uint8_t ch)
 {
@@ -169,11 +179,13 @@ static void sg_abort_output(uint8_t ch)
     }
 }
 
-static void sg_abort_task(uint8_t ch)
+static void sg_idle(uint8_t ch)
 {
-    gp.task        = TASK_IDLE;
-    gp.step_period = 0;
-    gp.freq        = 0;
+    gp.pulsgen_task = TASK_IDLE;
+    gp.step_period  = 0;
+    gp.step_wait    = 0;
+    gp.period_cmd   = 0;
+    gp.counts_cmd   = gp.counts;
 }
 
 static void sg_update_accel_max(uint8_t ch)
@@ -206,6 +218,22 @@ static void sg_update_vel_max(uint8_t ch)
         gp.step_len_old    = g.step_len;
         gp.step_space_old  = g.step_space;
     }
+}
+
+static void sg_update_vel_cmd(uint8_t ch)
+{
+    if ( sg_floats_equal(g.vel_cmd, gp.vel_cmd_old) ) return;
+
+    gp.period_cmd = 1000000000 / ((hal_s32_t) (g.vel_cmd * g.pos_scale));
+    gp.vel_cmd_old = g.vel_cmd;
+}
+
+static void sg_update_pos_cmd(uint8_t ch)
+{
+    if ( sg_floats_equal(g.pos_cmd, gp.pos_cmd_old) ) return;
+
+    gp.counts_cmd = (hal_s32_t) (g.pos_cmd * g.pos_scale);
+    gp.pos_cmd_old = g.pos_cmd;
 }
 
 static void sg_update_pins(uint8_t ch)
@@ -246,11 +274,11 @@ static void sg_update_pins(uint8_t ch)
 
 static void sg_update_counts(uint8_t ch)
 {
-    if ( !gp.task ) return;
+    if ( !gp.pulsgen_task ) return;
 
     uint32_t step_toggles0, step_toggles1, dir_toggles;
 
-    switch ( gp.task )
+    switch ( gp.pulsgen_task )
     {
         case TASK_FWD:
             g.rawcounts += pulsgen_task_toggles(gp.step_pulsgen_ch0) / 2;
@@ -288,6 +316,8 @@ static void sg_update_counts(uint8_t ch)
             g.rawcounts += (dir_toggles ? step_toggles1 : -step_toggles1) / 2;
             break;
     }
+
+    g.counts = g.rawcounts;
 }
 
 
@@ -306,12 +336,13 @@ static void sg_capture_pos(void *arg, long period)
 
     for ( ch = sg_cnt; ch--; )
     {
+        if ( !g.enable ) continue;
+
         // if POS_SCALE == 0.0 then POS_SCALE = 1.0
         sg_update_pos_scale(ch);
 
         // capture position in steps (counts, rawcounts)
         sg_update_counts(ch);
-        g.counts = g.rawcounts;
 
         // capture position in units
         g.pos_fb = ((hal_float_t)g.counts) / g.pos_scale;
@@ -333,32 +364,46 @@ static void sg_update_freq(void *arg, long period)
             sg_update_vel_max(ch);
 
             // stop output
-            if ( gp.task ) sg_abort_output(ch);
+            if ( gp.pulsgen_task ) sg_abort_output(ch);
 
             // capture position in steps (counts, rawcounts)
             sg_update_counts(ch);
-            g.counts = g.rawcounts;
 
+            if ( gp.ctrl_type ) // velocity control type
+            {
+                sg_update_vel_cmd(ch);
 
+                // TODO
+            }
+            else // position control type
+            {
+                sg_update_pos_cmd(ch);
 
+                // TODO
+            }
 
+            g.freq = ((hal_float_t)(1000000000 / g.step_period)) / g.pos_scale;
+
+            // TODO - setup pulsgens
         }
-        else if ( gp.task )
+        else if ( gp.pulsgen_task )
         {
             sg_abort_output(ch);
             sg_update_counts(ch);
-            sg_abort_task(ch);
+            sg_idle(ch);
+
+            g.freq = 0.0;
         }
     }
 }
 
-static void sg_make_pulses(void *arg, long period)
+static void sg_make_pulses(void *arg, long period) // no floats here!
 {
     static uint8_t ch;
 
     for ( ch = sg_cnt; ch--; )
     {
-        if ( !gp.task ) continue;
+        if ( !gp.pulsgen_task ) continue;
 
         if ( g.enable )
         {
@@ -370,7 +415,7 @@ static void sg_make_pulses(void *arg, long period)
             // abort output if channel is disabled
             sg_abort_output(ch);
             sg_update_counts(ch);
-            sg_abort_task(ch);
+            sg_idle(ch);
         }
     }
 }
@@ -449,14 +494,15 @@ static int32_t sg_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.dir_ch_ready = 0;
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
+        gp.step_period = 0;
+        gp.step_wait = 0;
         gp.steps_freq_max = 0;
         gp.steps_accel_max = 0;
 
-        gp.task = 0;
-
+        gp.counts_cmd = 0;
+        gp.period_cmd = 0;
+        gp.pulsgen_task = 0;
         gp.ctrl_type = type[ch];
-        gp.step_period = 0;
-        gp.step_wait = 0;
     }
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 
