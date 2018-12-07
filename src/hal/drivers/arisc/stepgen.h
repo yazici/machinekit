@@ -82,17 +82,19 @@ typedef struct
     hal_u32_t step_pulsgen_ch0; // private
     hal_u32_t step_pulsgen_ch1; // private
     hal_bit_t step_ch_ready; // private
-    hal_s32_t step_freq_new; // private
-    hal_s32_t step_freq; // private
+    hal_u32_t step_freq_new; // private
+    hal_u32_t step_freq; // private
     hal_s32_t step_wait_time; // private
-    hal_s32_t step_freq_max; // private
-    hal_s32_t step_accel_max; // private
+    hal_u32_t step_freq_max; // private
+    hal_u32_t step_accel_max; // private
 
     hal_u32_t dir_port_old; // private
     hal_u32_t dir_pin_old; // private
     hal_bit_t dir_inv_old; // private
     hal_u32_t dir_pulsgen_ch; // private
     hal_bit_t dir_ch_ready; // private
+    hal_bit_t dir; // private
+    hal_bit_t dir_new; // private
 
     // aren't available for the `make_pulses()`
 
@@ -145,9 +147,9 @@ static hal_bit_t sg_step_state_get(uint8_t ch)
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
 }
 
-static int8_t sg_dir_state_get(uint8_t ch)
+static uint8_t sg_dir_state_get(uint8_t ch)
 {
-    return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 1 : -1;
+    return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 0 : 1;
 }
 
 static void sg_step_state_set(uint8_t ch, hal_bit_t state)
@@ -218,10 +220,23 @@ static void sg_update_vel_max(uint8_t ch)
 
 static void sg_update_vel_cmd(uint8_t ch)
 {
+    static hal_s32_t freq;
+
     if ( sg_floats_equal(g.vel_cmd, gp.vel_cmd_old) ) return;
 
-    gp.step_freq_new = (hal_s32_t) (g.vel_cmd * g.pos_scale);
+    freq = (hal_s32_t) (g.vel_cmd * g.pos_scale);
     gp.vel_cmd_old = g.vel_cmd;
+
+    if ( freq >= 0 )
+    {
+        gp.step_freq_new = (hal_u32_t) freq;
+        gp.dir_new = 0;
+    }
+    else
+    {
+        gp.step_freq_new = (hal_u32_t) (-freq);
+        gp.dir_new = 1;
+    }
 }
 
 static void sg_update_pos_cmd(uint8_t ch)
@@ -525,6 +540,8 @@ static int32_t sg_malloc_and_export(const char *comp_name, int32_t comp_id)
         gp.dir_pin_old = UINT32_MAX;
         gp.dir_port_old = UINT32_MAX;
         gp.dir_ch_ready = 0;
+        gp.dir = 0;
+        gp.dir_new = 0;
 
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
