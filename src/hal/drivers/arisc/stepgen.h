@@ -147,7 +147,7 @@ static hal_bit_t sg_step_state_get(uint8_t ch)
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
 }
 
-static uint8_t sg_dir_state_get(uint8_t ch)
+static hal_bit_t sg_dir_state_get(uint8_t ch)
 {
     return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 0 : 1;
 }
@@ -190,7 +190,7 @@ static void sg_update_accel_max(uint8_t ch)
 {
     if ( !sg_floats_equal(g.accel_max, gp.accel_max_old) )
     {
-        gp.step_accel_max   = (hal_s32_t) (g.accel_max * g.pos_scale);
+        gp.step_accel_max   = (hal_u32_t) (g.accel_max * g.pos_scale);
         gp.accel_max_old    = g.accel_max;
     }
 }
@@ -204,7 +204,7 @@ static void sg_update_vel_max(uint8_t ch)
 {
     if ( !sg_floats_equal(g.vel_max, gp.vel_max_old) )
     {
-        gp.step_freq_max    = (hal_s32_t) (g.vel_max * g.pos_scale);
+        gp.step_freq_max    = (hal_u32_t) (g.vel_max * g.pos_scale);
         gp.vel_max_old      = g.vel_max;
     }
 
