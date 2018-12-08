@@ -144,22 +144,30 @@ static hal_bit_t sg_floats_equal(hal_float_t f1, hal_float_t f2)
 
 static hal_bit_t sg_step_state_get(uint8_t ch)
 {
+    if ( !gp.step_ch_ready ) return 0;
+
     return g.step_inv ^ gpio_pin_get(g.step_port, g.step_pin) ? 0 : 1;
 }
 
 static hal_bit_t sg_dir_state_get(uint8_t ch)
 {
+    if ( !gp.dir_ch_ready ) return 0;
+
     return g.dir_inv ^ gpio_pin_get(g.dir_port, g.dir_pin) ? 0 : 1;
 }
 
 static void sg_step_state_set(uint8_t ch, hal_bit_t state)
 {
+    if ( !gp.step_ch_ready ) return;
+
     if ( g.step_inv ^ state )   gpio_pin_clear (g.step_port, g.step_pin);
     else                        gpio_pin_set   (g.step_port, g.step_pin);
 }
 
 static void sg_dir_state_set(uint8_t ch, hal_bit_t state)
 {
+    if ( !gp.dir_ch_ready ) return;
+
     if ( g.dir_inv ^ state )    gpio_pin_clear (g.dir_port, g.dir_pin);
     else                        gpio_pin_set   (g.dir_port, g.dir_pin);
 }
@@ -210,6 +218,8 @@ static void sg_update_vel_max(uint8_t ch)
 
     if ( g.step_len != gp.step_len_old || g.step_space != gp.step_space_old )
     {
+        if ( !g.step_len && !g.step_space ) g.step_len = 1;
+
         hal_u32_t freq_max = 1000000000 / (g.step_len + g.step_space);
         if ( gp.step_freq_max > freq_max ) gp.step_freq_max = freq_max;
 
