@@ -394,15 +394,44 @@ static void sg_update_freq(void *arg, long period)
                 sg_update_vel_cmd(ch);
 
                 /* we need
-                    hal_s32_t step_freq_new; // private
-                    hal_s32_t step_freq; // private
-                    hal_s32_t step_freq_max; // private
-                    hal_s32_t step_accel_max; // private
-
+                    hal_u32_t step_freq_new; // private
+                    hal_u32_t step_freq; // private
                     hal_s32_t step_wait_time; // private
+                    hal_bit_t dir; // private
+                    hal_bit_t dir_new; // private
+
+                    hal_u32_t step_freq_max; // private
+                    hal_u32_t step_accel_max; // private
                 */
 
-                if ( gp.step_ch_ready && gp.dir_ch_ready )
+                if ( gp.step_freq ) // we are moving now
+                {
+                    // TODO
+                }
+                else // idle
+                {
+                    // no new commands
+                    if ( gp.step_freq == gp.step_freq_new ) gp.step_wait_time = 0;
+                    // we have a new command
+                    else
+                    {
+                        // update steps frequency
+                        gp.step_freq = gp.step_accel_max ? gp.step_accel_max : gp.step_freq_new;
+                        gp.step_freq = gp.step_freq_max && gp.step_freq > gp.step_freq_max ? gp.step_freq_max : gp.step_freq;
+
+                        // update step waiting time
+                        hal_u32_t step_period;
+                        step_period = gp.step_freq ? 1000000000 / gp.step_freq : 0;
+                        gp.step_wait_time = step_period - period;
+
+                        // update pulsgen task
+                        gp.dir = sg_dir_state_get(ch);
+                        if ( gp.dir == gp.dir_new ) gp.pulsgen_task = gp.dir ? TASK_REV : TASK_FWD;
+                        else gp.pulsgen_task = gp.dir_new ? TASK_DIR_REV : TASK_DIR_FWD;
+                    }
+                }
+
+                if ( gp.step_ch_ready && gp.dir_ch_ready && gp.step_freq && (gp.step_wait_time < 0) )
                 {
                     // TODO - setup pulsgen channels
                 }
@@ -414,12 +443,13 @@ static void sg_update_freq(void *arg, long period)
                 /* we need
                     hal_s32_t counts_new; // private
                     hal_s32_t counts;
-
                     hal_s32_t step_wait_time; // private
 
-                    hal_s32_t step_freq; // private
-                    hal_s32_t step_freq_max; // private
-                    hal_s32_t step_accel_max; // private
+                    hal_u32_t step_freq; // private
+                    hal_u32_t step_freq_max; // private
+                    hal_u32_t step_accel_max; // private
+                    hal_bit_t dir; // private
+                    hal_bit_t dir_new; // private
                 */
 
                 if ( gp.step_ch_ready && gp.dir_ch_ready )
