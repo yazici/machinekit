@@ -1,22 +1,35 @@
+# load components
 loadrt threads name1=base-thread period1=50000 fp1=0 name2=servo-thread period2=1000000 fp2=1
+loadrt arisc stepgen_ctrl_type=v
 
-loadrt arisc stepgen_num_chan=1
 
+# setup functions
 addf arisc.stepgen.make-pulses base-thread
 addf arisc.stepgen.capture-position servo-thread
 addf arisc.stepgen.update-freq servo-thread
 
-net PA arisc.gpio.PA
-net PL arisc.gpio.PL
 
-net PL arisc.stepgen.0.dir-port
-setp arisc.stepgen.0.dir-pin 10
-setp arisc.stepgen.0.dir-inv 0
+#setup pins
+net PA arisc.gpio.PA
+
+net PA arisc.stepgen.0.dir-port
+setp arisc.stepgen.0.dir-pin 12
+setp arisc.stepgen.0.dir-invert 0
 
 net PA arisc.stepgen.0.step-port
-setp arisc.stepgen.0.step-pin 15
-setp arisc.stepgen.0.step-inv 1
+setp arisc.stepgen.0.step-pin 11
+setp arisc.stepgen.0.step-invert 0
 
+
+# setup parameters
+setp arisc.stepgen.0.maxvel 100.0
+setp arisc.stepgen.0.maxaccel 200.0
+setp arisc.stepgen.0.enable 1
+
+
+# start threads
 start
 
+
+# show actual data
 show pin arisc.stepgen
