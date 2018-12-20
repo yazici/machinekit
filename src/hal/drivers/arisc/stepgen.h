@@ -195,22 +195,23 @@ static void sg_idle(uint8_t ch)
 
 static void sg_update_accel_max(uint8_t ch)
 {
-    if ( !sg_floats_equal(g.accel_max, gp.accel_max_old) )
-    {
-        gp.step_accel_max   = (hal_u32_t) (g.accel_max * g.pos_scale);
-        gp.accel_max_old    = g.accel_max;
-    }
+    if ( sg_floats_equal(g.accel_max, gp.accel_max_old) ) return;
+    if ( g.accel_max < 0 ) g.accel_max = 1.0;
+
+    gp.step_accel_max   = (hal_u32_t) (g.accel_max * g.pos_scale);
+    gp.accel_max_old    = g.accel_max;
 }
 
 static void sg_update_pos_scale(uint8_t ch)
 {
-    if ( g.pos_scale < 1e-20 && g.pos_scale > -1e-20 ) g.pos_scale = 1.0;
+    if ( g.pos_scale < 0 || (g.pos_scale < 1e-20 && g.pos_scale > -1e-20) ) g.pos_scale = 1.0;
 }
 
 static void sg_update_vel_max(uint8_t ch)
 {
     if ( !sg_floats_equal(g.vel_max, gp.vel_max_old) )
     {
+        if ( g.vel_max < 0 ) g.vel_max = 1.0;
         gp.step_freq_max    = (hal_u32_t) (g.vel_max * g.pos_scale);
         gp.vel_max_old      = g.vel_max;
     }
