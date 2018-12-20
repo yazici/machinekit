@@ -280,8 +280,14 @@ static void sg_update_pins(uint8_t ch)
     }
 }
 
-static void sg_update_dir_time(uint8_t ch)
+static void sg_update_stepdir_time(uint8_t ch)
 {
+    if ( !g.step_len )   { g.step_len   = 5000;  gp.step_len_old   = g.step_len; }
+    if ( !g.step_space ) { g.step_space = 5000;  gp.step_space_old = g.step_space; }
+
+    if ( !g.dir_setup ) g.dir_setup = 35000;
+    if ( !g.dir_hold )  g.dir_hold  = 35000;
+
     if ( (g.dir_hold + g.dir_setup) > STEPGEN_DIR_TIME_MAX )
     {
         g.dir_setup = STEPGEN_DIR_TIME_MAX / 2;
@@ -356,7 +362,7 @@ static void sg_setup_pulsgen(uint8_t ch, long period)
         }
         else
         {
-            step_period = gp.step_freq ? 1000000000 / gp.step_freq : 0;
+            step_period = gp.step_freq ? 1000000000 / abs(gp.step_freq) : 0;
             delay = gp.step_wait_time < 0 ? 0 : gp.step_wait_time;
 
             if ( g.step_len > step_period )
@@ -442,7 +448,7 @@ static void sg_capture_pos(void *arg, long period)
 static void sg_update_freq(void *arg, long period)
 {
     static uint8_t ch;
-    static int8_t dir_old, dir_new;
+    static int8_t dir_old, dir_new, dir_cur;
     static hal_s64_t freq;
 
     for ( ch = sg_cnt; ch--; )
@@ -455,11 +461,11 @@ static void sg_update_freq(void *arg, long period)
         }
 
         // recalculate private and public data
+        sg_update_stepdir_time(ch);
         sg_update_pins(ch);
         sg_update_pos_scale(ch);
         sg_update_accel_max(ch);
         sg_update_vel_max(ch);
-        sg_update_dir_time(ch);
 
         // abort output
         if ( gp.pulsgen_task ) sg_abort_output(ch);
@@ -476,10 +482,20 @@ static void sg_update_freq(void *arg, long period)
 
             if ( gp.step_freq != gp.step_freq_new )
             {
-                if ( gp.step_accel_max ) freq += dir_new * period * gp.step_accel_max / 1000000000;
-                else                     freq  = gp.step_freq_new;
+                if ( gp.step_accel_max )
+                {
+                    freq += dir_new * period * gp.step_accel_max / 1000000000;
 
-                if ( gp.step_freq_max && freq > gp.step_freq_max ) freq = gp.step_freq_max;
+                    if ( freq >= 0 && gp.step_freq_new >= 0 && freq > gp.step_freq_new ) freq = gp.step_freq_new;
+                    else if ( freq < 0 && gp.step_freq_new < 0 && freq < gp.step_freq_new ) freq = gp.step_freq_new;
+                }
+                else freq = gp.step_freq_new;
+
+                if ( gp.step_freq_max )
+                {
+                    if ( freq >= 0 && freq > gp.step_freq_max ) freq = gp.step_freq_max;
+                    else if ( freq < 0 && freq < -gp.step_freq_max ) freq = -gp.step_freq_max;
+                }
 
                 if      ( freq > INT32_MAX ) freq = INT32_MAX;
                 else if ( freq < INT32_MIN ) freq = INT32_MIN;
