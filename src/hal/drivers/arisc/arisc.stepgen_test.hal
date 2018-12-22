@@ -24,6 +24,13 @@ setp arisc.stepgen.0.step-invert 0
 # setup parameters
 setp arisc.stepgen.0.maxvel 100.0
 setp arisc.stepgen.0.maxaccel 200.0
+
+setp arisc.stepgen.0.dirsetup 0
+setp arisc.stepgen.0.dirhold 0
+setp arisc.stepgen.0.steplen 1000
+setp arisc.stepgen.0.stepspace 1000
+setp arisc.stepgen.0.position-scale 1.0
+
 setp arisc.stepgen.0.enable 1
 
 
