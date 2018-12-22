@@ -12,7 +12,7 @@
 
 
 
-#define PULSGEN_CH_CNT 32  ///< maximum number of pulse generator channels
+#define PULSGEN_CH_CNT 64  ///< maximum number of pulse generator channels
 
 /// messages types
 enum
@@ -21,7 +21,8 @@ enum
     PULSGEN_MSG_TASK_SETUP,
     PULSGEN_MSG_TASK_ABORT,
     PULSGEN_MSG_TASK_STATE,
-    PULSGEN_MSG_TASK_TOGGLES
+    PULSGEN_MSG_TASK_TOGGLES,
+    PULSGEN_MSG_WATCHDOG_SETUP
 };
 
 /// the message data access
@@ -31,6 +32,8 @@ struct pulsgen_msg_task_setup_t { uint32_t ch; uint32_t toggles;
 struct pulsgen_msg_ch_t { uint32_t ch; };
 struct pulsgen_msg_state_t { uint32_t state; };
 struct pulsgen_msg_toggles_t { uint32_t toggles; };
+struct pulsgen_msg_watchdog_setup_t { uint32_t enable; uint32_t time; };
+
 
 
 
