@@ -164,6 +164,23 @@ uint32_t pulsgen_task_toggles(uint8_t c)
     return 0;
 }
 
+/**
+ * @brief   enable/disable `abort all` watchdog
+ * @param   enable      0 = disable watchdog, other values - enable watchdog
+ * @param   time        watchdog wait time (in nanoseconds)
+ * @retval  none
+ */
+void pulsgen_watchdog_setup(uint8_t enable, uint32_t time)
+{
+    struct pulsgen_msg_watchdog_setup_t tx =
+        *((struct pulsgen_msg_watchdog_setup_t *) &msg_buf);
+
+    tx.enable = enable;
+    tx.time = time;
+
+    msg_send(PULSGEN_MSG_WATCHDOG_SETUP, (uint8_t*)&tx, 2*4, 0);
+}
+
 
 
 

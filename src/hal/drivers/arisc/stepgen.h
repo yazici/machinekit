@@ -125,7 +125,7 @@ static int8_t *stepgen_ctrl_type;
 RTAPI_MP_STRING(stepgen_ctrl_type, "stepgen channels control type, comma separated");
 
 static stepgen_ch_t *sg;
-static uint8_t sg_cnt = 0;
+static uint8_t sg_cnt = 0, sg_wd = 0;
 
 
 
@@ -450,6 +450,12 @@ static void sg_update_freq(void *arg, long period)
     static uint8_t ch;
     static int8_t dir_old, dir_new, dir_cur;
     static hal_s64_t freq;
+
+    if ( !sg_wd ) // enable watchdog, once
+    {
+        pulsgen_watchdog_setup(1, 4*period);
+        sg_wd = 1;
+    }
 
     for ( ch = sg_cnt; ch--; )
     {
