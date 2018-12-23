@@ -447,15 +447,14 @@ static void sg_capture_pos(void *arg, long period)
 
 static void sg_update_freq(void *arg, long period)
 {
-    static uint8_t ch;
+    static uint8_t ch, wd = 0;
     static int8_t dir_old, dir_new, dir_cur;
     static hal_s64_t freq;
 
-    if ( !sg_wd ) // enable watchdog, once
-    {
-        pulsgen_watchdog_setup(1, 4*period);
-        sg_wd = 1;
-    }
+    // enable watchdog with `512*period` timeout
+    // and update watchdog every `256*period` time
+    if ( !wd ) pulsgen_watchdog_setup(1, 512*period);
+    wd++;
 
     for ( ch = sg_cnt; ch--; )
     {
