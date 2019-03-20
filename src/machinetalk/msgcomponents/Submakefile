@@ -25,6 +25,7 @@ pbmsgs-objs := \
 	$(PBGEN)/$(NAMESPACEDIR)/preview.npb.o \
 	$(PBGEN)/$(NAMESPACEDIR)/status.npb.o \
 	$(PBGEN)/$(NAMESPACEDIR)/ros.npb.o \
+	$(PBGEN)/$(NAMESPACEDIR)/sample.npb.o \
 	$(PBGEN)/$(NAMESPACEDIR)/jplan.npb.o \
 	$(PBGEN)/$(NAMESPACEDIR)/value.npb.o
 
@@ -40,7 +41,8 @@ endif
 
 
 ../include/%.h: ./$(MSGCOMP_DIR)/%.h
-	cp $^ $@
+	$(ECHO) Copying header file $@
+	$(Q)cp $^ $@
 
 # ifeq ($(BUILD_EXAMPLES),yes)
 

@@ -97,7 +97,7 @@ int vs_ringlogfv(const msg_level_t level,
 
     if (get_msg_level() == RTAPI_MSG_NONE)
 	return 0;
-    if (level >= get_msg_level())
+    if (level > get_msg_level())
 	return 0;
 
     msg.hdr.origin = origin;
@@ -211,8 +211,13 @@ static int set_msg_level(int new_level)
     }
     return old_level;
 #else
-    old_level = ulapi_msg_level;
-    ulapi_msg_level = new_level;
+    if (global_data) {
+	old_level = global_data->user_msg_level;
+        global_data->user_msg_level = new_level;
+    } else {
+        old_level = ulapi_msg_level;
+        ulapi_msg_level = new_level;
+    }
     return old_level;
 #endif
 }

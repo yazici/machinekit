@@ -2,14 +2,17 @@ INCLUDES += rtapi rtapi_export
 
 # this covers the userpci and shmdrv directories too, in a bit cludgy way
 ../include/%.h: ./rtapi/%.h
-	cp  $^ $@
+	$(ECHO) Copying header file $@
+	$(Q)cp  $^ $@
 
 ../include/%.hh: ./rtapi/%.hh
-	cp  $^ $@
+	$(ECHO) Copying header file $@
+	$(Q)cp  $^ $@
 
 ../include/%.h: ./rtapi/shmdrv/%.h
-	mkdir -p ../include/shmdrv
-	cp  $^ $@
+	$(ECHO) Copying header file $@
+	@mkdir -p ../include/shmdrv
+	$(Q)cp  $^ $@
 
 ##########################################
 # Separate sources hack
@@ -254,6 +257,7 @@ $(call TOOBJSDEPS, rtapi/$(threads)/rtapi_app.cc): EXTRAFLAGS = \
 	    -o $@ \
 	    $^ \
 	    $(LDFLAGS) \
+	    $($(THREADS)_THREADS_LDFLAGS) \
 	    $(PROTOBUF_LIBS) $(CZMQ_LIBS) $(LTTNG_UST_LIBS) \
 	    -lstdc++ -ldl -luuid
 
@@ -352,6 +356,9 @@ RTAPI_MSGD_SRCS =  \
 
 RTAPI_MSGD_OBJS := $(call TOOBJS, $(RTAPI_MSGD_SRCS))
 
+$(call TOOBJS, rtapi/rtapi_msgd.cc): \
+	CXXFLAGS += -DGIT_BUILD_SHA=\"'$(GIT_BUILD_SHA)'\"
+
 RTAPI_MSGD_CFLAGS := \
 	$(PROTOBUF_CFLAGS) $(CZMQ_CFLAGS) $(AVAHI_CFLAGS)
 
@@ -368,10 +375,10 @@ $(call TOOBJSDEPS, $(RTAPI_MSGD_SRCS)): \
 	../lib/liblinuxcncshm.so \
 	../lib/liblinuxcncini.so \
 	../lib/libmtalk.so.0 \
-	../lib/libmachinetalk-pb2++.so
+	../lib/libmachinetalk-pb2++.so 
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p $(dir $@)
-	$(Q)$(CC)  $(LDFLAGS) -o $@ $^ $(RTAPI_MSGD_LDFLAGS) -lrt
+	$(Q)$(CC)  $(LDFLAGS) -o $@ $^ $(RTAPI_MSGD_LDFLAGS) -lrt -lzmq
 
 USERSRCS += $(RTAPI_MSGD_SRCS)
 TARGETS += ../libexec/rtapi_msgd
