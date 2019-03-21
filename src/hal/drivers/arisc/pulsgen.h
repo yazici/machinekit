@@ -30,6 +30,7 @@ struct pulsgen_msg_pin_setup_t { uint32_t ch; uint32_t port; uint32_t pin; uint3
 struct pulsgen_msg_task_setup_t { uint32_t ch; uint32_t toggles;
     uint32_t pin_setup_time; uint32_t pin_hold_time; uint32_t start_delay; };
 struct pulsgen_msg_ch_t { uint32_t ch; };
+struct pulsgen_msg_abort_t { uint32_t ch; uint32_t when; };
 struct pulsgen_msg_state_t { uint32_t state; };
 struct pulsgen_msg_toggles_t { uint32_t toggles; };
 struct pulsgen_msg_watchdog_setup_t { uint32_t enable; uint32_t time; };
@@ -100,15 +101,17 @@ void pulsgen_task_setup
 /**
  * @brief   abort current task for the selected channel
  * @param   c       channel id
+ * @param   when    0 = on pin state setup, !0 = on hold
  * @retval  none
  */
-void pulsgen_task_abort(uint8_t c)
+void pulsgen_task_abort(uint8_t c, uint8_t when)
 {
-    struct pulsgen_msg_ch_t tx = *((struct pulsgen_msg_ch_t *) &msg_buf);
+    struct pulsgen_msg_abort_t tx = *((struct pulsgen_msg_abort_t *) &msg_buf);
 
     tx.ch = c;
+    tx.when = when;
 
-    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 1*4);
+    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 2*4, 0);
 }
 
 /**

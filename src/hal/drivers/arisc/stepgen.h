@@ -175,12 +175,12 @@ static void sg_abort_output(uint8_t ch)
 {
     if ( gp.step_ch_ready )
     {
-        pulsgen_task_abort(gp.step_pulsgen_ch0);
-        pulsgen_task_abort(gp.step_pulsgen_ch1);
+        pulsgen_task_abort(gp.step_pulsgen_ch0, 0);
+        pulsgen_task_abort(gp.step_pulsgen_ch1, 0);
     }
     if ( gp.dir_ch_ready )
     {
-        pulsgen_task_abort(gp.dir_pulsgen_ch);
+        pulsgen_task_abort(gp.dir_pulsgen_ch, 0);
     }
 }
 
