@@ -111,7 +111,7 @@ void pulsgen_task_abort(uint8_t c, uint8_t when)
     tx.ch = c;
     tx.when = when;
 
-    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 2*4, 0);
+    msg_send(PULSGEN_MSG_TASK_ABORT, (uint8_t*)&tx, 2*4);
 }
 
 /**
@@ -181,7 +181,7 @@ void pulsgen_watchdog_setup(uint8_t enable, uint32_t time)
     tx.enable = enable;
     tx.time = time;
 
-    msg_send(PULSGEN_MSG_WATCHDOG_SETUP, (uint8_t*)&tx, 2*4, 0);
+    msg_send(PULSGEN_MSG_WATCHDOG_SETUP, (uint8_t*)&tx, 2*4);
 }
 
 
