@@ -28,6 +28,7 @@ MODULE_LICENSE("GPL");
 
 static int32_t comp_id;
 static const uint8_t * comp_name = "arisc";
+static uint8_t cpu_id = H3;
 
 
 
@@ -44,7 +45,7 @@ int32_t rtapi_app_main(void)
     #define EXIT { hal_exit(comp_id); return -1; }
 
     // shared memory allocation and export
-    cpu_id_get();
+    cpu_id = cpu_id_get();
     if ( msg_mem_init(cpu_id, comp_name) ) EXIT;
     if ( gpio_malloc_and_export(comp_name, comp_id) ) EXIT;
     if ( sg_malloc_and_export(comp_name, comp_id) ) EXIT;

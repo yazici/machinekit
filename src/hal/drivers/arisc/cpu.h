@@ -43,7 +43,6 @@ struct cpu_data_t
 static int8_t *cpu;
 RTAPI_MP_STRING(cpu, "CPU name");
 
-static uint8_t cpu_id = H3;
 static const struct cpu_data_t cpu_data[CPU_CNT] =
 {
     {"H2+", 0x00040000, (8+8+32)*1024},
@@ -58,19 +57,17 @@ static const struct cpu_data_t cpu_data[CPU_CNT] =
 
 
 
-static void cpu_id_get()
+static uint8_t cpu_id_get()
 {
-    if ( cpu == NULL ) return;
+    if ( cpu == NULL ) return H3;
 
     uint8_t c;
     for ( c = CPU_CNT; c--; )
     {
-        if ( 0 == strcmp(cpu, cpu_data[c].name) )
-        {
-            cpu_id = c;
-            return;
-        }
+        if ( !strcmp(cpu, cpu_data[c].name) ) return c;
     }
+
+    return H3;
 }
 
 
