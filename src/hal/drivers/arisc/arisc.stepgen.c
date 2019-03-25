@@ -160,6 +160,7 @@ static void update_stepdir_time(uint8_t ch)
 
 
 
+
 // HAL functions
 
 static void capture_pos(void *arg, long period)
@@ -170,12 +171,8 @@ static void capture_pos(void *arg, long period)
     {
         if ( !g.enable ) continue;
 
-        // if POS_SCALE == 0.0 then POS_SCALE = 1.0
         update_pos_scale(ch);
-
-        // todo
-
-        // capture position in units
+        g.counts = stepgen_pos_get(ch);
         g.pos_fb = ((hal_float_t)g.counts) / g.pos_scale;
     }
 }
@@ -201,7 +198,6 @@ static void update_freq(void *arg, long period)
         // todo
     }
 }
-
 
 
 
