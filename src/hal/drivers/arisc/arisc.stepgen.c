@@ -171,8 +171,10 @@ static void capture_pos(void *arg, long period)
     {
         if ( !g.enable ) continue;
 
-        update_pos_scale(ch);
         g.counts = stepgen_pos_get(ch);
+        g.rawcounts = g.counts;
+
+        update_pos_scale(ch);
         g.pos_fb = ((hal_float_t)g.counts) / g.pos_scale;
     }
 }
@@ -183,7 +185,15 @@ static void update_freq(void *arg, long period)
 
     for ( ch = sg_cnt; ch--; )
     {
-        if ( !g.enable ) continue;
+        if ( !g.enable )
+        {
+            if ( gp.step_freq )
+            {
+                gp.step_freq = 0;
+                g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
+            }
+            continue;
+        }
 
         // recalculate private and public data
         update_stepdir_time(ch);
@@ -192,10 +202,44 @@ static void update_freq(void *arg, long period)
         update_accel_max(ch);
         update_vel_max(ch);
 
-        if ( gp.ctrl_type ) update_vel_cmd(ch);
-        else update_pos_cmd(ch);
+        if ( gp.ctrl_type ) // velocity mode
+        {
+            uint32_t period_accel_max, diff, low_time, high_time;
 
-        // todo
+            update_vel_cmd(ch);
+
+            if ( gp.step_freq != gp.step_freq_new )
+            {
+                period_accel_max = (uint32_t)(((uint64_t)gp.step_accel_max) * period / 1000000000);
+
+                diff = abs(gp.step_freq - gp.step_freq_new);
+                if ( diff > period_accel_max ) diff = period_accel_max;
+
+                gp.step_freq += gp.step_freq < gp.step_freq_new ? diff : -diff;
+            }
+
+            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
+
+            if ( (1000000000 / gp.step_freq) > g.step_len )
+            {
+                low_time = (1000000000 / gp.step_freq) - g.step_len;
+                high_time = g.step_len;
+            }
+            else
+            {
+                low_time = g.step_len / 2;
+                high_time = low_time;
+            }
+
+#warning "ATTENTION: arisc firmware can abort next task too"
+            stepgen_abort(ch);
+            stepgen_task_add(ch, 0, UINT32_MAX, low_time, high_time);
+        }
+        else // position mode
+        {
+            update_pos_cmd(ch);
+            if ( g.counts == gp.counts_new ) continue;
+        }
     }
 }
 
