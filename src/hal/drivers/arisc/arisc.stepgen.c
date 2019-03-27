@@ -56,6 +56,7 @@ RTAPI_MP_STRING(ctrl_type, "channels control type, comma separated");
 
 static stepgen_ch_t *sg;
 static uint8_t sg_cnt = 0;
+static uint8_t wd = 0;
 
 
 
@@ -182,6 +183,15 @@ static void capture_pos(void *arg, long period)
 static void update_freq(void *arg, long period)
 {
     static uint8_t ch;
+
+    // is watchdog disabled?
+    if ( !wd )
+    {
+        // enable watchdog
+        wd = 1;
+        // start watchdod, wait time = 5 periods
+        stepgen_watchdog_setup(1, 5*period);
+    }
 
     for ( ch = sg_cnt; ch--; )
     {
