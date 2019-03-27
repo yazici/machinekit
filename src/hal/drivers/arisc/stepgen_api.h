@@ -11,10 +11,11 @@ enum
 {
     STEPGEN_MSG_PIN_SETUP = 0x20,
     STEPGEN_MSG_TASK_ADD,
+    STEPGEN_MSG_TASK_UPDATE,
     STEPGEN_MSG_ABORT,
     STEPGEN_MSG_POS_GET,
     STEPGEN_MSG_POS_SET,
-    STEPGEN_MSG_TASKS_LEFT,
+    STEPGEN_MSG_WATCHDOG_SETUP,
     STEPGEN_MSG_CNT
 };
 
@@ -70,17 +71,41 @@ void stepgen_task_add(uint8_t c, uint8_t type, uint32_t pulses, uint32_t pin_low
 }
 
 /**
- * @brief   abort all tasks for the selected channel
- * @param   c   channel id
+ * @brief   update time values for the current task
+ *
+ * @param   c               channel id
+ * @param   type            0:step, 1:dir
+ * @param   pin_low_time    pin LOW state duration (in nanoseconds)
+ * @param   pin_high_time   pin HIGH state duration (in nanoseconds)
+ *
  * @retval  none
  */
-void stepgen_abort(uint8_t c)
+void stepgen_task_update(uint8_t c, uint8_t type, uint32_t pin_low_time, uint32_t pin_high_time)
 {
     u32_10_t *tx = (u32_10_t*) msg_buf;
 
     tx->v[0] = c;
+    tx->v[1] = type;
+    tx->v[2] = pin_low_time;
+    tx->v[3] = pin_high_time;
 
-    msg_send(STEPGEN_MSG_ABORT, msg_buf, 1*4, 0);
+    msg_send(STEPGEN_MSG_TASK_UPDATE, msg_buf, 4*4, 0);
+}
+
+/**
+ * @brief   abort all tasks for the selected channel
+ * @param   c       channel id
+ * @param   all     abort all task?
+ * @retval  none
+ */
+void stepgen_abort(uint8_t c, uint8_t all)
+{
+    u32_10_t *tx = (u32_10_t*) msg_buf;
+
+    tx->v[0] = c;
+    tx->v[1] = all;
+
+    msg_send(STEPGEN_MSG_ABORT, msg_buf, 2*4, 0);
 }
 
 /**
@@ -124,27 +149,19 @@ void stepgen_pos_set(uint8_t c, int32_t pos)
 }
 
 /**
- * @brief   task count left to do
- * @param   c           channel id
- * @retval  uint8_t     task count left to do (including current task)
+ * @brief   enable/disable `abort all` watchdog
+ * @param   enable      0 = disable watchdog, other values - enable watchdog
+ * @param   time        watchdog wait time (in nanoseconds)
+ * @retval  none
  */
-uint8_t stepgen_tasks_left(uint8_t c)
+void stepgen_watchdog_setup(uint8_t enable, uint32_t time)
 {
     u32_10_t *tx = (u32_10_t*) msg_buf;
 
-    tx->v[0] = c;
+    tx->v[0] = enable;
+    tx->v[1] = time;
 
-    msg_send(STEPGEN_MSG_TASKS_LEFT, msg_buf, 1*4, 0);
-
-    // finite loop, only 999999 tries to read an answer
-    uint32_t n = 0;
-    for ( n = 999999; n--; )
-    {
-        if ( msg_read(STEPGEN_MSG_TASKS_LEFT, msg_buf, 0) < 0 ) continue;
-        else return (uint8_t)tx->v[0];
-    }
-
-    return 0;
+    msg_send(STEPGEN_MSG_WATCHDOG_SETUP, msg_buf, 2*4, 0);
 }
 
 
