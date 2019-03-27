@@ -256,12 +256,19 @@ static void update_freq(void *arg, long period)
                 // change direction?
                 if ( (gp.step_freq >= 0 ? 1 : -1) != (step_freq >= 0 ? 1 : -1) )
                 {
-                    stepgen_abort(ch, 1); // abort all tasks
+                    if ( gp.step_freq ) stepgen_abort(ch, 1); // abort all tasks
+
                     stepgen_task_add(ch, 1, 0, g.dir_setup, g.dir_hold);
                     stepgen_task_add(ch, 0, 0xFFFFFFFF, (uint32_t)step_space, g.step_len);
                 }
                 // just update frequency
-                else stepgen_task_update(ch, 0, (uint32_t)step_space, g.step_len);
+                else
+                {
+                    if ( gp.step_freq )
+                        stepgen_task_update(ch, 0, (uint32_t)step_space, g.step_len);
+                    else
+                        stepgen_task_add(ch, 0, 0xFFFFFFFF, (uint32_t)step_space, g.step_len);
+                }
             }
 
             // save new frequency value
