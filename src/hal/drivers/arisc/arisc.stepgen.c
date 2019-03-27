@@ -195,13 +195,17 @@ static void update_freq(void *arg, long period)
 
     for ( ch = sg_cnt; ch--; )
     {
+        // channel disabled?
         if ( !g.enable )
         {
+            // are we still moving?
             if ( gp.step_freq )
             {
                 gp.step_freq = 0;
-                g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
+                g.freq = 0;
+                stepgen_abort(ch, 1); // abort all tasks
             }
+
             continue;
         }
 
@@ -212,43 +216,18 @@ static void update_freq(void *arg, long period)
         update_accel_max(ch);
         update_vel_max(ch);
 
-        if ( gp.ctrl_type ) // velocity mode
+        // are we using a velocity mode?
+        if ( gp.ctrl_type )
         {
-            uint32_t period_accel_max, diff, low_time, high_time;
-
             update_vel_cmd(ch);
 
-            if ( gp.step_freq != gp.step_freq_new )
-            {
-                period_accel_max = (uint32_t)(((uint64_t)gp.step_accel_max) * period / 1000000000);
 
-                diff = abs(gp.step_freq - gp.step_freq_new);
-                if ( diff > period_accel_max ) diff = period_accel_max;
-
-                gp.step_freq += gp.step_freq < gp.step_freq_new ? diff : -diff;
-            }
-
-            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
-
-            if ( (1000000000 / gp.step_freq) > g.step_len )
-            {
-                low_time = (1000000000 / gp.step_freq) - g.step_len;
-                high_time = g.step_len;
-            }
-            else
-            {
-                low_time = g.step_len / 2;
-                high_time = low_time;
-            }
-
-#warning "ATTENTION: arisc firmware can abort next task too"
-            stepgen_abort(ch);
-            stepgen_task_add(ch, 0, UINT32_MAX, low_time, high_time);
         }
         else // position mode
         {
             update_pos_cmd(ch);
-            if ( g.counts == gp.counts_new ) continue;
+
+
         }
     }
 }
