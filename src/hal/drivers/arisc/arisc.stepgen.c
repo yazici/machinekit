@@ -220,12 +220,58 @@ static void update_freq(void *arg, long period)
         if ( gp.ctrl_type )
         {
             update_vel_cmd(ch);
+            if ( gp.step_freq == gp.step_freq_new ) continue;
 
+            int32_t step_freq = gp.step_freq_new;
 
+            // have we an acceleration limit?
+            if ( gp.step_accel_max )
+            {
+                uint32_t accel_max = 1 + (uint32_t)((uint64_t)gp.step_accel_max * period / 1000000000);
+                if ( abs(gp.step_freq - gp.step_freq_new) > accel_max )
+                {
+                    step_freq = gp.step_freq + (gp.step_freq_new >= 0 ? 1 : -1) * accel_max;
+                }
+            }
+
+            // have we a frequency limit?
+            if ( gp.step_freq_max && abs(step_freq) > gp.step_freq_max )
+            {
+                step_freq = (step_freq >= 0 ? 1 : -1) * gp.step_freq_max;
+            }
+
+            // we need to stop?
+            if ( !step_freq ) stepgen_abort(ch, 1); // abort all tasks
+            else // continue
+            {
+                int32_t step_space = 1000000000/abs(step_freq) - g.step_len;
+
+                // step space is too low?
+                if ( step_space < g.step_space )
+                {
+                    step_space = g.step_space;
+                    step_freq = (step_freq >= 0 ? 1 : -1) * (1000000000 / (g.step_len + step_space));
+                }
+
+                // change direction?
+                if ( (gp.step_freq >= 0 ? 1 : -1) != (step_freq >= 0 ? 1 : -1) )
+                {
+                    stepgen_abort(ch, 1); // abort all tasks
+                    stepgen_task_add(ch, 1, 0, g.dir_setup, g.dir_hold);
+                    stepgen_task_add(ch, 0, 0xFFFFFFFF, (uint32_t)step_space, g.step_len);
+                }
+                // just update frequency
+                else stepgen_task_update(ch, 0, (uint32_t)step_space, g.step_len);
+            }
+
+            // save new frequency value
+            gp.step_freq = step_freq;
+            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
         }
         else // position mode
         {
             update_pos_cmd(ch);
+            if ( g.counts == gp.counts_new ) continue;
 
 
         }
