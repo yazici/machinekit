@@ -26,13 +26,13 @@ static int32_t comp_id;
 static const uint8_t * comp_name = "arisc.gpio";
 static uint8_t cpu_id = ALLWINNER_H3;
 
-static char *CPU;
+static char *CPU = "H3";
 RTAPI_MP_STRING(CPU, "Allwinner CPU name");
 
-static int8_t *in;
+static int8_t *in = "";
 RTAPI_MP_STRING(in, "input pins, comma separated");
 
-static int8_t *out;
+static int8_t *out = "";
 RTAPI_MP_STRING(out, "output pins, comma separated");
 
 static const char *gpio_name[GPIO_PORTS_CNT] =

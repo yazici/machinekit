@@ -48,10 +48,10 @@ static int32_t comp_id;
 static const uint8_t * comp_name = "arisc.stepgen";
 static uint8_t cpu_id = ALLWINNER_H3;
 
-static char *CPU;
+static char *CPU = "H3";
 RTAPI_MP_STRING(CPU, "Allwinner CPU name");
 
-static char *ctrl_type;
+static char *ctrl_type = "";
 RTAPI_MP_STRING(ctrl_type, "channels control type, comma separated");
 
 static stepgen_ch_t *sg;
