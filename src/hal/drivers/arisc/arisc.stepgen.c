@@ -246,7 +246,7 @@ static void update_freq(void *arg, long period)
             if ( !step_freq ) stepgen_abort(ch, 1); // abort all tasks
             else // continue
             {
-                int32_t step_space = (int32_t)((uint64_t)(E*1000000000)/abs(step_freq) - g.step_len);
+                int64_t step_space = (uint64_t)(E*1000000000)/abs(step_freq) - g.step_len;
 
                 // step space is too low?
                 if ( step_space < g.step_space )
