@@ -41,6 +41,8 @@ MODULE_LICENSE("GPL");
 #define PRINT_ERROR_AND_RETURN(MSG,RETVAL) \
     { PRINT_ERROR(MSG); return RETVAL; }
 
+#define E (1000000UL) // epsilon, using to calculate double as long long int
+
 
 
 
@@ -73,7 +75,7 @@ static void update_accel_max(uint8_t ch)
     if ( floats_equal(g.accel_max, gp.accel_max_old) ) return;
     if ( g.accel_max < 0 ) g.accel_max = 1.0;
 
-    gp.step_accel_max   = (hal_u32_t) (g.accel_max * g.pos_scale);
+    gp.step_accel_max   = E * (hal_u64_t)(g.accel_max * g.pos_scale);
     gp.accel_max_old    = g.accel_max;
 }
 
@@ -87,7 +89,7 @@ static void update_vel_max(uint8_t ch)
     if ( !floats_equal(g.vel_max, gp.vel_max_old) )
     {
         if ( g.vel_max < 0 ) g.vel_max = 1.0;
-        gp.step_freq_max    = (hal_u32_t) (g.vel_max * g.pos_scale);
+        gp.step_freq_max    = E * (hal_u64_t)(g.vel_max * g.pos_scale);
         gp.vel_max_old      = g.vel_max;
     }
 
@@ -95,7 +97,7 @@ static void update_vel_max(uint8_t ch)
     {
         if ( !g.step_len && !g.step_space ) g.step_len = 1;
 
-        hal_u32_t freq_max = 1000000000 / (g.step_len + g.step_space);
+        hal_u64_t freq_max = (uint64_t)(E * 1000000000) / (g.step_len + g.step_space);
         if ( gp.step_freq_max > freq_max ) gp.step_freq_max = freq_max;
 
         gp.step_len_old    = g.step_len;
@@ -107,7 +109,7 @@ static void update_vel_cmd(uint8_t ch)
 {
     if ( floats_equal(g.vel_cmd, gp.vel_cmd_old) ) return;
 
-    gp.step_freq_new = (hal_s32_t) (g.vel_cmd * g.pos_scale);
+    gp.step_freq_new = E * (hal_s64_t)(g.vel_cmd * g.pos_scale);
     gp.vel_cmd_old = g.vel_cmd;
 }
 
@@ -222,12 +224,12 @@ static void update_freq(void *arg, long period)
             update_vel_cmd(ch);
             if ( gp.step_freq == gp.step_freq_new ) continue;
 
-            int32_t step_freq = gp.step_freq_new;
+            int64_t step_freq = gp.step_freq_new;
 
             // have we an acceleration limit?
             if ( gp.step_accel_max )
             {
-                uint32_t accel_max = 1 + (uint32_t)((uint64_t)gp.step_accel_max * period / 1000000000);
+                uint64_t accel_max = gp.step_accel_max * period / 1000000000;
                 if ( abs(gp.step_freq - gp.step_freq_new) > accel_max )
                 {
                     step_freq = gp.step_freq + (gp.step_freq_new >= 0 ? 1 : -1) * accel_max;
@@ -244,13 +246,13 @@ static void update_freq(void *arg, long period)
             if ( !step_freq ) stepgen_abort(ch, 1); // abort all tasks
             else // continue
             {
-                int32_t step_space = 1000000000/abs(step_freq) - g.step_len;
+                int32_t step_space = (int32_t)((uint64_t)(E*1000000000)/abs(step_freq) - g.step_len);
 
                 // step space is too low?
                 if ( step_space < g.step_space )
                 {
                     step_space = g.step_space;
-                    step_freq = (step_freq >= 0 ? 1 : -1) * (1000000000 / (g.step_len + step_space));
+                    step_freq = (step_freq >= 0 ? 1 : -1) * ((uint64_t)(E * 1000000000) / (g.step_len + step_space));
                 }
 
                 // change direction?
@@ -273,7 +275,7 @@ static void update_freq(void *arg, long period)
 
             // save new frequency value
             gp.step_freq = step_freq;
-            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale;
+            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale / E;
         }
         else // position mode
         {

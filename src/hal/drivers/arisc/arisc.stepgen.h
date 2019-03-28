@@ -57,10 +57,10 @@ typedef struct
     hal_u32_t step_port_old; // private
     hal_u32_t step_pin_old; // private
     hal_bit_t step_inv_old; // private
-    hal_s32_t step_freq_new; // private
-    hal_s32_t step_freq; // private
-    hal_u32_t step_freq_max; // private
-    hal_u32_t step_accel_max; // private
+    hal_s64_t step_freq_new; // private
+    hal_s64_t step_freq; // private
+    hal_u64_t step_freq_max; // private
+    hal_u64_t step_accel_max; // private
 
     hal_u32_t dir_port_old; // private
     hal_u32_t dir_pin_old; // private
