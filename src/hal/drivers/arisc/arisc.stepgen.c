@@ -195,16 +195,43 @@ static void update_freq(void *arg, long period)
         stepgen_watchdog_setup(1, 5*period);
     }
 
+    // input
+    #define p_scale     g.pos_scale
+    #define a_max       g.accel_max
+    #define v_max       g.vel_max
+    #define p_cmd       g.pos_cmd
+    #define v_cmd       g.vel_cmd
+    // output
+    #define p           g.pos_fb
+    #define p_prev      gp.pos_fb_prev
+    #define counts      g.counts
+    #define counts_prev gp.counts_prev
+    #define freq        g.freq
+    // other vars
+    double a_now;
+    double d_dist;
+    int dir;
+    int goto_dir;
+    int a_dir;
+    int v_dir;
+    double v_tmp1;
+    double v_tmp2;
+    #define v           gp.vel
+    #define v_prev      gp.vel_prev
+    // actions
+    int steps = 0;
+    int dirs = 0;
+
     for ( ch = sg_cnt; ch--; )
     {
         // channel disabled?
         if ( !g.enable )
         {
             // are we still moving?
-            if ( gp.step_freq )
+            if ( freq )
             {
-                gp.step_freq = 0;
-                g.freq = 0;
+//                gp.step_freq = 0;
+                freq = 0;
                 stepgen_abort(ch, 1); // abort all tasks
             }
 
@@ -212,79 +239,64 @@ static void update_freq(void *arg, long period)
         }
 
         // recalculate private and public data
-        update_stepdir_time(ch);
+//        update_stepdir_time(ch);
         update_pins(ch);
         update_pos_scale(ch);
-        update_accel_max(ch);
-        update_vel_max(ch);
+//        update_accel_max(ch);
+//        update_vel_max(ch);
+
+        v_prev      = v;
+        p_prev      = p;
+        counts_prev = counts;
 
         // are we using a velocity mode?
         if ( gp.ctrl_type )
         {
-            update_vel_cmd(ch);
-            if ( gp.step_freq == gp.step_freq_new ) continue;
-
-            int64_t step_freq = gp.step_freq_new;
-
-            // have we an acceleration limit?
-            if ( gp.step_accel_max )
-            {
-                uint64_t accel_max = gp.step_accel_max * period / 1000000000;
-                if ( abs(gp.step_freq - gp.step_freq_new) > accel_max )
-                {
-                    step_freq = gp.step_freq + (gp.step_freq_new >= 0 ? 1 : -1) * accel_max;
-                }
-            }
-
-            // have we a frequency limit?
-            if ( gp.step_freq_max && abs(step_freq) > gp.step_freq_max )
-            {
-                step_freq = (step_freq >= 0 ? 1 : -1) * gp.step_freq_max;
-            }
-
-            // we need to stop?
-            if ( !step_freq ) stepgen_abort(ch, 1); // abort all tasks
-            else // continue
-            {
-                int64_t step_space = (uint64_t)(E*1000000000)/abs(step_freq) - g.step_len;
-
-                // step space is too low?
-                if ( step_space < g.step_space )
-                {
-                    step_space = g.step_space;
-                    step_freq = (step_freq >= 0 ? 1 : -1) * ((uint64_t)(E * 1000000000) / (g.step_len + step_space));
-                }
-
-                // change direction?
-                if ( (gp.step_freq >= 0 ? 1 : -1) != (step_freq >= 0 ? 1 : -1) )
-                {
-                    if ( gp.step_freq ) stepgen_abort(ch, 1); // abort all tasks
-
-                    stepgen_task_add(ch, 1, 0, g.dir_setup, g.dir_hold);
-                    stepgen_task_add(ch, 0, 0xFFFFFFFF, (uint32_t)step_space, g.step_len);
-                }
-                // just update frequency
-                else
-                {
-                    if ( gp.step_freq )
-                        stepgen_task_update(ch, 0, (uint32_t)step_space, g.step_len);
-                    else
-                        stepgen_task_add(ch, 0, 0xFFFFFFFF, (uint32_t)step_space, g.step_len);
-                }
-            }
-
-            // save new frequency value
-            gp.step_freq = step_freq;
-            g.freq = ((hal_float_t)gp.step_freq) / g.pos_scale / E;
+            a_now   = a_max != 0 ? a_max*period/1000000000 : rtapi_fabs(v_prev - v_cmd);
+            v_dir   = v_cmd > v_prev ? 1 : -1;
+            v_tmp1  = v_prev + v_dir*a_now;
+            v_tmp2  = (v_dir > 0 ? v_tmp1 > v_cmd : v_tmp1 < v_cmd) ? v_cmd : v_tmp1;
+            v       = (v_max != 0) && rtapi_fabs(v_tmp2) > rtapi_fabs(v_max) ?
+                        (v_tmp2 >= 0 ? 1 : -1)*v_max :
+                        v_tmp2;
         }
         else // position mode
         {
-            update_pos_cmd(ch);
-            if ( g.counts == gp.counts_new ) continue;
-
-
+            a_now       = a_max * period / 1000000000;
+            dir         = v_prev >= 0 ? 1 : -1;
+            d_dist      = a_max != 0 ? ((rtapi_fabs(v_prev+a_now*dir))^2) / (2*a_max) : 0;
+            goto_dir    = p_cmd >= p_prev ? 1 : -1;
+            a_dir       = rtapi_fabs(p_cmd - p_prev) > d_dist ? 1 : -1;
+            v_dir       = dir != goto_dir ? goto_dir : dir * a_dir;
+            v_tmp1      = a_max != 0 ? v_prev + a_now*v_dir : (p_cmd - p_prev)*1000000000/period;
+            v_tmp2      = v_max != 0 && rtapi_fabs(v_tmp1) > v_max ? (v_tmp1 >= 0 ? 1 : -1)*v_max : v_tmp1;
+            v           = abs(round(p_cmd*p_scale) - counts_prev) > 0 ?
+                              v_tmp2 :
+                              (a_max != 0 && rtapi_fabs(v_prev) > 1.1*a_now ? v_tmp2 : 0);
         }
+
+        p = p_prev + v * period / 1000000000;
+        counts = round( p * p_scale );
+        freq = rtapi_fabs(v * p_scale);
+
+        steps = abs(counts - counts_prev);
+        dirs = (v_prev >= 0 && v >= 0) || (v_prev < 0 && v < 0) ? 0 : (v != 0 ? 1 : 0);
+
+        // TODO
     }
+
+    #undef p_scale
+    #undef a_max
+    #undef v_max
+    #undef p_cmd
+    #undef v_cmd
+    #undef p
+    #undef p_prev
+    #undef counts
+    #undef counts_prev
+    #undef freq
+    #undef v
+    #undef v_prev
 }
 
 
@@ -360,6 +372,11 @@ static int32_t malloc_and_export(const char *comp_name, int32_t comp_id)
 
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
+
+        gp.counts_prev = 0;
+        gp.pos_fb_prev = 0.0;
+        gp.vel_prev = 0.0;
+        gp.vel = 0.0;
     }
     if ( r ) PRINT_ERROR_AND_RETURN("HAL pins export failed", -1);
 

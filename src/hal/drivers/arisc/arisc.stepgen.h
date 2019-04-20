@@ -71,6 +71,11 @@ typedef struct
     hal_float_t pos_cmd_old; // private
     hal_float_t vel_cmd_old; // private
 
+    hal_s32_t counts_prev;
+    hal_float_t pos_fb_prev;
+    hal_float_t vel_prev;
+    hal_float_t vel;
+
 } stepgen_ch_t;
 
 
