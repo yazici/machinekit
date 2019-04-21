@@ -230,8 +230,8 @@ static void update_freq(void *arg, long period)
             // are we still moving?
             if ( freq )
             {
-//                gp.step_freq = 0;
                 freq = 0;
+                v = 0;
                 stepgen_abort(ch, 1); // abort all tasks
             }
 
@@ -239,23 +239,20 @@ static void update_freq(void *arg, long period)
         }
 
         // recalculate private and public data
-//        update_stepdir_time(ch);
         update_pins(ch);
         update_pos_scale(ch);
-//        update_accel_max(ch);
-//        update_vel_max(ch);
 
         v_prev      = v;
         p_prev      = p;
         counts_prev = counts;
 
-        // are we using a velocity mode?
-        if ( gp.ctrl_type )
+        if ( gp.ctrl_type ) // velocity mode?
         {
             a_now   = a_max != 0 ? a_max*period/1000000000 : rtapi_fabs(v_prev - v_cmd);
             v_dir   = v_cmd > v_prev ? 1 : -1;
             v_tmp1  = v_prev + v_dir*a_now;
             v_tmp2  = (v_dir > 0 ? v_tmp1 > v_cmd : v_tmp1 < v_cmd) ? v_cmd : v_tmp1;
+            // TODO - add additional max velocity check based on g.step_len & g.step_space
             v       = (v_max != 0) && rtapi_fabs(v_tmp2) > rtapi_fabs(v_max) ?
                         (v_tmp2 >= 0 ? 1 : -1)*v_max :
                         v_tmp2;
@@ -269,6 +266,7 @@ static void update_freq(void *arg, long period)
             a_dir       = rtapi_fabs(p_cmd - p_prev) > d_dist ? 1 : -1;
             v_dir       = dir != goto_dir ? goto_dir : dir * a_dir;
             v_tmp1      = a_max != 0 ? v_prev + a_now*v_dir : (p_cmd - p_prev)*1000000000/period;
+            // TODO - add additional max velocity check based on g.step_len & g.step_space
             v_tmp2      = v_max != 0 && rtapi_fabs(v_tmp1) > v_max ? (v_tmp1 >= 0 ? 1 : -1)*v_max : v_tmp1;
             v           = abs(round(p_cmd*p_scale) - counts_prev) > 0 ?
                               v_tmp2 :
@@ -282,7 +280,21 @@ static void update_freq(void *arg, long period)
         steps = abs(counts - counts_prev);
         dirs = (v_prev >= 0 && v >= 0) || (v_prev < 0 && v < 0) ? 0 : (v != 0 ? 1 : 0);
 
-        // TODO
+        long period_tmp = period;
+
+        if ( dirs )
+        {
+            // TODO - add check for negative values and integer overflow
+            period_tmp -= g.dir_hold;
+            stepgen_task_add(ch, 1, 1, 0, g.dir_hold);
+        }
+
+        if ( steps )
+        {
+            // TODO - add check for negative values and integer overflow
+            uint32_t step_period = period_tmp / steps;
+            stepgen_task_add(ch, 0, steps, g.step_len, step_period - g.step_len);
+        }
     }
 
     #undef p_scale
