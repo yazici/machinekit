@@ -1,6 +1,7 @@
 #include "rtapi.h"
 #include "rtapi_app.h"
 #include "hal.h"
+#include <math.h>
 #include <float.h>
 #include <stdlib.h>
 #include "rtapi_math.h"
@@ -260,7 +261,7 @@ static void update_freq(void *arg, long period)
         {
             a_now       = a_max * period / 1000000000;
             dir         = v_prev >= 0 ? 1 : -1;
-            d_dist      = a_max != 0 ? ((rtapi_fabs(v_prev+a_now*dir))^2) / (2*a_max) : 0;
+            d_dist      = a_max != 0 ? ((v_prev+a_now*dir)*(v_prev+a_now*dir)) / (2*a_max) : 0;
             goto_dir    = p_cmd >= p_prev ? 1 : -1;
             a_dir       = rtapi_fabs(p_cmd - p_prev) > d_dist ? 1 : -1;
             v_dir       = dir != goto_dir ? goto_dir : dir * a_dir;
