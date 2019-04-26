@@ -66,11 +66,6 @@ static uint8_t wd = 0;
 
 // TOOLS
 
-static hal_bit_t floats_equal(hal_float_t f1, hal_float_t f2)
-{
-    return *((int64_t*) &f1) == *((int64_t*) &f2);
-}
-
 static void update_pos_scale(uint8_t ch)
 {
     if ( g.pos_scale < 0 || (g.pos_scale < 1e-20 && g.pos_scale > -1e-20) ) g.pos_scale = 1.0;
@@ -108,6 +103,11 @@ static void update_pins(uint8_t ch)
 }
 
 #if 0
+static hal_bit_t floats_equal(hal_float_t f1, hal_float_t f2)
+{
+    return *((int64_t*) &f1) == *((int64_t*) &f2);
+}
+
 static void update_accel_max(uint8_t ch)
 {
     if ( floats_equal(g.accel_max, gp.accel_max_old) ) return;
