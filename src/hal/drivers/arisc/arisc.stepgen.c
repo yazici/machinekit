@@ -252,7 +252,6 @@ static void update_freq(void *arg, long period)
             v_dir   = v_cmd > v_prev ? 1 : -1;
             v_tmp1  = v_prev + v_dir*a_now;
             v_tmp2  = (v_dir > 0 ? v_tmp1 > v_cmd : v_tmp1 < v_cmd) ? v_cmd : v_tmp1;
-            // TODO - add additional max velocity check based on g.step_len & g.step_space
             v       = (v_max != 0) && rtapi_fabs(v_tmp2) > rtapi_fabs(v_max) ?
                         (v_tmp2 >= 0 ? 1 : -1)*v_max :
                         v_tmp2;
@@ -266,7 +265,6 @@ static void update_freq(void *arg, long period)
             a_dir       = rtapi_fabs(p_cmd - p_prev) > d_dist ? 1 : -1;
             v_dir       = dir != goto_dir ? goto_dir : dir * a_dir;
             v_tmp1      = a_max != 0 ? v_prev + a_now*v_dir : (p_cmd - p_prev)*1000000000/period;
-            // TODO - add additional max velocity check based on g.step_len & g.step_space
             v_tmp2      = v_max != 0 && rtapi_fabs(v_tmp1) > v_max ? (v_tmp1 >= 0 ? 1 : -1)*v_max : v_tmp1;
             v           = abs(round(p_cmd*p_scale) - counts_prev) > 0 ?
                               v_tmp2 :
@@ -274,26 +272,32 @@ static void update_freq(void *arg, long period)
         }
 
         p = p_prev + v * period / 1000000000;
-        counts = round( p * p_scale );
+        counts = round(p * p_scale);
         freq = rtapi_fabs(v * p_scale);
 
         steps = abs(counts - counts_prev);
         dirs = (v_prev >= 0 && v >= 0) || (v_prev < 0 && v < 0) ? 0 : (v != 0 ? 1 : 0);
 
-        long period_tmp = period;
+        uint32_t period_tmp = period;
 
         if ( dirs )
         {
-            // TODO - add check for negative values and integer overflow
-            period_tmp -= g.dir_hold;
-            stepgen_task_add(ch, 1, 1, 0, g.dir_hold);
+            uint32_t dir_hold = period_tmp < g.dir_hold ? 50000 : g.dir_hold;
+            period_tmp -= dir_hold;
+            stepgen_task_add(ch, 1, 1, 0, dir_hold);
         }
 
         if ( steps )
         {
-            // TODO - add check for negative values and integer overflow
             uint32_t step_period = period_tmp / steps;
-            stepgen_task_add(ch, 0, steps, g.step_len, step_period - g.step_len);
+            uint32_t step_len = g.step_len;
+            uint32_t step_space = step_period - step_len;
+            if ( step_period < g.step_len || step_period < (g.step_len + g.step_space) )
+            {
+                step_len = step_period / 2;
+                step_space = step_len;
+            }
+            stepgen_task_add(ch, 0, steps, step_len, step_space);
         }
     }
 
