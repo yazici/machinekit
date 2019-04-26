@@ -71,6 +71,43 @@ static hal_bit_t floats_equal(hal_float_t f1, hal_float_t f2)
     return *((int64_t*) &f1) == *((int64_t*) &f2);
 }
 
+static void update_pos_scale(uint8_t ch)
+{
+    if ( g.pos_scale < 0 || (g.pos_scale < 1e-20 && g.pos_scale > -1e-20) ) g.pos_scale = 1.0;
+}
+
+static void update_pins(uint8_t ch)
+{
+    if ( g.step_port != gp.step_port_old    ||
+         g.step_pin  != gp.step_pin_old     ||
+         g.step_inv  != gp.step_inv_old )
+    {
+        if ( g.step_port < GPIO_PORTS_CNT && g.step_pin < GPIO_PINS_CNT )
+        {
+            stepgen_pin_setup(ch, 0, g.step_port, g.step_pin, g.step_inv);
+        }
+
+        gp.step_port_old = g.step_port;
+        gp.step_pin_old  = g.step_pin;
+        gp.step_inv_old  = g.step_inv;
+    }
+
+    if ( g.dir_port != gp.dir_port_old  ||
+         g.dir_pin  != gp.dir_pin_old   ||
+         g.dir_inv  != gp.dir_inv_old )
+    {
+        if ( g.dir_port < GPIO_PORTS_CNT && g.dir_pin < GPIO_PINS_CNT )
+        {
+            stepgen_pin_setup(ch, 1, g.dir_port, g.dir_pin, g.dir_inv);
+        }
+
+        gp.dir_port_old = g.dir_port;
+        gp.dir_pin_old  = g.dir_pin;
+        gp.dir_inv_old  = g.dir_inv;
+    }
+}
+
+#if 0
 static void update_accel_max(uint8_t ch)
 {
     if ( floats_equal(g.accel_max, gp.accel_max_old) ) return;
@@ -78,11 +115,6 @@ static void update_accel_max(uint8_t ch)
 
     gp.step_accel_max   = E * (hal_u64_t)(g.accel_max * g.pos_scale);
     gp.accel_max_old    = g.accel_max;
-}
-
-static void update_pos_scale(uint8_t ch)
-{
-    if ( g.pos_scale < 0 || (g.pos_scale < 1e-20 && g.pos_scale > -1e-20) ) g.pos_scale = 1.0;
 }
 
 static void update_vel_max(uint8_t ch)
@@ -122,37 +154,6 @@ static void update_pos_cmd(uint8_t ch)
     gp.pos_cmd_old = g.pos_cmd;
 }
 
-static void update_pins(uint8_t ch)
-{
-    if ( g.step_port != gp.step_port_old    ||
-         g.step_pin  != gp.step_pin_old     ||
-         g.step_inv  != gp.step_inv_old )
-    {
-        if ( g.step_port < GPIO_PORTS_CNT && g.step_pin < GPIO_PINS_CNT )
-        {
-            stepgen_pin_setup(ch, 0, g.step_port, g.step_pin, g.step_inv);
-        }
-
-        gp.step_port_old = g.step_port;
-        gp.step_pin_old  = g.step_pin;
-        gp.step_inv_old  = g.step_inv;
-    }
-
-    if ( g.dir_port != gp.dir_port_old  ||
-         g.dir_pin  != gp.dir_pin_old   ||
-         g.dir_inv  != gp.dir_inv_old )
-    {
-        if ( g.dir_port < GPIO_PORTS_CNT && g.dir_pin < GPIO_PINS_CNT )
-        {
-            stepgen_pin_setup(ch, 1, g.dir_port, g.dir_pin, g.dir_inv);
-        }
-
-        gp.dir_port_old = g.dir_port;
-        gp.dir_pin_old  = g.dir_pin;
-        gp.dir_inv_old  = g.dir_inv;
-    }
-}
-
 static void update_stepdir_time(uint8_t ch)
 {
     if ( !g.step_len )   { g.step_len   = 5000;  gp.step_len_old   = g.step_len; }
@@ -161,6 +162,7 @@ static void update_stepdir_time(uint8_t ch)
     if ( !g.dir_setup ) g.dir_setup = 35000;
     if ( !g.dir_hold )  g.dir_hold  = 35000;
 }
+#endif
 
 
 
@@ -370,26 +372,30 @@ static int32_t malloc_and_export(const char *comp_name, int32_t comp_id)
         if ( type[ch] ) { EXPORT_PIN(HAL_IN,float,vel_cmd,"velocity-cmd", 0.0); }
         else            { EXPORT_PIN(HAL_IN,float,pos_cmd,"position-cmd", 0.0); }
 
+#if 0
         gp.counts_new = 0;
+#endif
         gp.ctrl_type = type[ch];
 
         gp.step_inv_old = 0;
         gp.step_pin_old = UINT32_MAX;
         gp.step_port_old = UINT32_MAX;
+#if 0
         gp.step_len_old = 1000;
         gp.step_space_old = 1000;
         gp.step_freq = 0;
         gp.step_freq_new = 0;
         gp.step_freq_max = 0;
         gp.step_accel_max = 0;
+#endif
 
         gp.dir_inv_old = 0;
         gp.dir_pin_old = UINT32_MAX;
         gp.dir_port_old = UINT32_MAX;
-
+#if 0
         gp.vel_max_old = 0.0;
         gp.accel_max_old = 0.0;
-
+#endif
         gp.counts_prev = 0;
         gp.pos_fb_prev = 0.0;
         gp.vel_prev = 0.0;

@@ -49,32 +49,40 @@ typedef struct
     hal_float_t *pos_fb; // out
     hal_float_t *freq; // out
 
+#if 0
     hal_s32_t counts_new; // private
+#endif
     hal_bit_t ctrl_type; // private
 
+#if 0
     hal_u32_t step_space_old; // private
     hal_u32_t step_len_old; // private
+#endif
     hal_u32_t step_port_old; // private
     hal_u32_t step_pin_old; // private
     hal_bit_t step_inv_old; // private
+#if 0
     hal_s64_t step_freq_new; // private
     hal_s64_t step_freq; // private
     hal_u64_t step_freq_max; // private
     hal_u64_t step_accel_max; // private
+#endif
 
     hal_u32_t dir_port_old; // private
     hal_u32_t dir_pin_old; // private
     hal_bit_t dir_inv_old; // private
 
+#if 0
     hal_float_t vel_max_old; // private
     hal_float_t accel_max_old; // private
     hal_float_t pos_cmd_old; // private
     hal_float_t vel_cmd_old; // private
+#endif
 
-    hal_s32_t counts_prev;
-    hal_float_t pos_fb_prev;
-    hal_float_t vel_prev;
-    hal_float_t vel;
+    hal_s32_t counts_prev; // private
+    hal_float_t pos_fb_prev; // private
+    hal_float_t vel_prev; // private
+    hal_float_t vel; // private
 
 } stepgen_ch_t;
 
